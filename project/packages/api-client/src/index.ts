@@ -1,4 +1,4 @@
-import type { Availability, Cart, CommerceApi, CustomerApi, PriceQuote, ProductDto } from '@nexa/contracts';
+import type { Availability, Cart, CheckoutApi, CommerceApi, CustomerApi, PriceQuote, ProductDto } from '@nexa/contracts';
 export type { CommerceApi } from '@nexa/contracts';
 // Web adapter. Production browser sessions are secured through a BFF cookie and CSRF rules.
 export function createWebApi(baseUrl: string): CommerceApi {
@@ -8,6 +8,12 @@ export function createWebApi(baseUrl: string): CommerceApi {
       const response = await fetch(productsUrl);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return (await response.json()) as ProductDto[]; // Validate response with Zod/OpenAPI in production.
+    },
+    async searchProducts(query) {
+      const parameters = new URLSearchParams({ q: query });
+      const response = await fetch(`${baseUrl}/api/v1/search/products?${parameters}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return (await response.json()) as ProductDto[];
     },
     async getProduct(productId) {
       const response = await fetch(`${productsUrl}/${encodeURIComponent(productId)}`);
@@ -32,14 +38,14 @@ export function createWebApi(baseUrl: string): CommerceApi {
   };
 }
 
-export function createWebCustomerApi(): CustomerApi {
+export function createWebCustomerApi(sandboxEnabled = false): CustomerApi {
   let csrfToken: string | undefined;
 
-  async function write(path: string, body?: object) {
+  async function write(path: string, body?: object, headers?: Record<string, string>) {
     if (!csrfToken) throw new Error('Sign in to continue.');
     const response = await fetch(path, {
       method: 'POST',
-      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json', ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (response.status === 401) csrfToken = undefined;
@@ -47,7 +53,34 @@ export function createWebCustomerApi(): CustomerApi {
     return response;
   }
 
+  async function read(path: string) {
+    const response = await fetch(path, { cache: 'no-store' });
+    if (response.status === 401) csrfToken = undefined;
+    if (!response.ok && response.status !== 404) throw new Error(`HTTP ${response.status}`);
+    return response;
+  }
+
+  const checkout: CheckoutApi = {
+    async start(cart, key) {
+      const response = await write('/api/v1/checkouts', {
+        cart_id: cart.id, cart_version: cart.version, payment_method_token: 'sandbox_approve',
+      }, { 'Idempotency-Key': key });
+      return response.json();
+    },
+    async status(id) {
+      return (await read(`/api/v1/checkouts/${encodeURIComponent(id)}`)).json();
+    },
+    async shipment(orderId) {
+      const response = await read(`/api/v1/orders/${encodeURIComponent(orderId)}/shipment`);
+      return response.status === 404 ? null : response.json();
+    },
+    async notifications(orderId) {
+      return (await read(`/api/v1/orders/${encodeURIComponent(orderId)}/notifications`)).json();
+    },
+  };
+
   return {
+    checkout: sandboxEnabled ? checkout : undefined,
     async signedIn() {
       const response = await fetch('/auth/session', { cache: 'no-store' });
       if (response.status === 401 || response.status === 503) {

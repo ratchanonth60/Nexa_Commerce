@@ -45,6 +45,21 @@ paths:
           description: Product ID must be a UUID
         '404':
           description: No active product found with this ID
+  /api/v1/search/products:
+    get:
+      summary: Search active products by title and SKU
+      operationId: searchProducts
+      security: []
+      parameters:
+        - {in: query, name: q, required: true, schema: {type: string, minLength: 1, maxLength: 120}}
+        - {in: query, name: limit, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200':
+          description: Products ordered by relevance, then title and ID
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Product'}}
+        '400': {description: Invalid search query or limit}
   /api/v1/pricing/quotes:
     get:
       summary: Read a storefront price quote for display
@@ -199,6 +214,95 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Order'}
         '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/orders/{orderId}/shipment:
+    get:
+      summary: Read the shipment for an owned order
+      operationId: getCustomerShipment
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200': {$ref: '#/components/responses/ShipmentResult'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Shipment is awaiting creation}
+  /api/v1/orders/{orderId}/notifications:
+    get:
+      summary: List dispatch and delivery notifications for an owned order
+      operationId: getShipmentNotifications
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Shipment notifications in delivery order
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/ShipmentNotification'}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/ops/inventory/{productId}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      summary: Read stock totals as an operator
+      operationId: getOperatorStock
+      responses:
+        '200': {$ref: '#/components/responses/StockResult'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      summary: Adjust on-hand stock as an operator
+      operationId: adjustOperatorStock
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_on_hand, on_hand]
+              properties:
+                expected_on_hand: {type: integer, minimum: 0}
+                on_hand: {type: integer, minimum: 0}
+      responses:
+        '200': {$ref: '#/components/responses/StockResult'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {description: Stock changed or the requested count is below reservations and allocations}
+  /api/v1/ops/shipments/{orderId}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      summary: Read shipment status as an operator
+      operationId: getOperatorShipment
+      responses:
+        '200': {$ref: '#/components/responses/ShipmentResult'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    post:
+      summary: Advance a shipment as an operator
+      operationId: advanceOperatorShipment
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_status, status]
+              properties:
+                expected_status: {$ref: '#/components/schemas/ShipmentStatus'}
+                status: {$ref: '#/components/schemas/ShipmentStatus'}
+      responses:
+        '200': {$ref: '#/components/responses/ShipmentResult'}
+        '202': {description: Dispatch queued, content: {application/json: {schema: {$ref: '#/components/schemas/Shipment'}}}}
+        '400': {description: Invalid shipment status transition}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {description: Shipment status changed}
 components:
   securitySchemes:
     sessionCookie:
@@ -220,6 +324,16 @@ components:
     CheckoutId: {in: path, name: checkoutId, required: true, schema: {type: string, format: uuid}}
     OrderId: {in: path, name: orderId, required: true, schema: {type: string, format: uuid}}
   responses:
+    ShipmentResult:
+      description: Current shipment state
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Shipment'}
+    StockResult:
+      description: Current stock totals
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Stock'}
     NotFound: {description: Resource not found}
     Forbidden: {description: Not authorized for this resource}
     Unauthorized:
@@ -229,6 +343,34 @@ components:
           schema: {type: string, example: Bearer}
     CartUnavailable: {description: Access token validation has not been configured}
   schemas:
+    ShipmentStatus:
+      type: string
+      enum: [pending, packed, dispatched, delivered]
+    Shipment:
+      type: object
+      required: [id, order_id, status]
+      properties:
+        id: {type: string, format: uuid}
+        order_id: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/ShipmentStatus'}
+    ShipmentNotification:
+      type: object
+      required: [event_id, order_id, shipment_id, status, event_type, occurred_at]
+      properties:
+        event_id: {type: string, format: uuid}
+        order_id: {type: string, format: uuid}
+        shipment_id: {type: string, format: uuid}
+        status: {type: string, enum: [dispatched, delivered]}
+        event_type: {type: string}
+        occurred_at: {type: string, format: date-time}
+    Stock:
+      type: object
+      required: [product_id, on_hand, reserved, allocated]
+      properties:
+        product_id: {type: string, format: uuid}
+        on_hand: {type: integer, minimum: 0}
+        reserved: {type: integer, minimum: 0}
+        allocated: {type: integer, minimum: 0}
     Product:
       type: object
       required: [id, sku, title, status]

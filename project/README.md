@@ -152,3 +152,29 @@ replaced with a new cart for a new order. Use `sandbox_decline` to exercise the
 payment failure path and release stock. The local simulator takes these two
 test tokens and omits shipping addresses. Confirmed orders and outbox records
 are written together. The sandbox stores no card details.
+
+## Local operations
+
+Start the Fulfillment database with Checkout enabled.
+
+```bash
+docker compose -f infra/compose.yaml --profile operations up -d --wait fulfillment-postgres
+export FULFILLMENT_DATABASE_URL=postgres://nexa:nexa_dev_only@127.0.0.1:5438/fulfillment_db
+```
+
+Restart the gateway, then run `VITE_CHECKOUT_SANDBOX=true pnpm dev:web`.
+Sign in as the buyer, add a product, place a sandbox order, and refresh its
+status to get the order ID. For desktop operations, sign in as
+`nexa-operator` / `nexa_local_operator_only`. Open the order by ID in the
+backoffice and advance it to packed, dispatched, then delivered. The
+storefront displays the shipment and its notification history after refresh.
+
+The operator role comes from the signed access token's `nexa_roles` array.
+The local realm grants it only to the operator account. Keycloak imports the
+realm when it first creates it. For an existing realm, apply the role mapper
+and operator account from the realm file through Keycloak administration.
+Dispatch persists a queue entry before adjusting allocated stock, and the worker
+retries incomplete dispatches across gateway restarts. Notification history is
+served from Fulfillment. Product search is backed by an active-only Catalog
+GIN index. Inventory adjustments record the operator and previous and new
+values in Inventory.

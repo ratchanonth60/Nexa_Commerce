@@ -2,9 +2,11 @@ use serde::{Deserialize, Serialize};
 
 mod auth;
 mod cart;
+mod operations;
 
 use auth::{get_session, sign_in, sign_out, DesktopSession};
 use cart::{add_cart_item, create_cart, get_cart};
+use operations::{adjust_stock, advance_shipment, read_shipment, read_stock};
 
 const PRODUCTS_URL: &str = "http://127.0.0.1:8082/api/v1/catalog/products";
 
@@ -31,6 +33,25 @@ async fn list_products() -> Result<Vec<ProductDto>, String> {
         .json::<Vec<ProductDto>>()
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn search_products(query: String) -> Result<Vec<ProductDto>, String> {
+    reqwest::Client::builder()
+        .no_proxy()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|_| "Could not initialize the search client.")?
+        .get("http://127.0.0.1:8082/api/v1/search/products")
+        .query(&[("q", query)])
+        .send()
+        .await
+        .map_err(|_| "Could not reach product search.")?
+        .error_for_status()
+        .map_err(|_| "Product search failed.")?
+        .json()
+        .await
+        .map_err(|_| "Product search returned an invalid response.".into())
 }
 
 #[tauri::command]
@@ -124,6 +145,7 @@ pub fn run() {
         .manage(DesktopSession::default())
         .invoke_handler(tauri::generate_handler![
             list_products,
+            search_products,
             get_product,
             get_price_quote,
             get_availability,
@@ -132,7 +154,11 @@ pub fn run() {
             sign_out,
             create_cart,
             get_cart,
-            add_cart_item
+            add_cart_item,
+            read_stock,
+            adjust_stock,
+            read_shipment,
+            advance_shipment
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nexa Commerce desktop");

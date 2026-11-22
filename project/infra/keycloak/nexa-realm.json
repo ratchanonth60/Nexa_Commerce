@@ -4,11 +4,26 @@
   "registrationAllowed": false,
   "sslRequired": "external",
   "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [{ "name": "nexa-operator" }]
+  },
   "clientScopes": [
     {
       "name": "nexa-api",
       "protocol": "openid-connect",
       "protocolMappers": [
+        {
+          "name": "Nexa operator roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "nexa_roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
         {
           "name": "Access token subject",
           "protocol": "openid-connect",
@@ -58,6 +73,18 @@
     }
   ],
   "users": [
+    {
+      "username": "nexa-operator",
+      "enabled": true,
+      "firstName": "Nexa",
+      "lastName": "Operator",
+      "email": "operator@example.test",
+      "emailVerified": true,
+      "realmRoles": ["nexa-operator"],
+      "credentials": [
+        { "type": "password", "value": "nexa_local_operator_only", "temporary": false }
+      ]
+    },
     {
       "username": "nexa-buyer",
       "enabled": true,

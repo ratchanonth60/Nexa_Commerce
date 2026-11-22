@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CheckoutPanel } from './CheckoutPanel';
 import type { Cart, CommerceApi, CustomerApi, PriceQuote, ProductDto } from '@nexa/contracts';
 export function ProductList({ products, onSelect }: {
   products: ProductDto[];
@@ -24,8 +25,11 @@ export function Catalog({ api, customerApi, title }: {
   const [products, setProducts] = useState<ProductDto[] | null>(null);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [signedIn, setSignedIn] = useState(false);
   const [cart, setCart] = useState<Cart | null>(null);
+  const [checkoutPending, setCheckoutPending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [accountError, setAccountError] = useState('');
 
@@ -48,6 +52,7 @@ export function Catalog({ api, customerApi, title }: {
       if (customerApi && await customerApi.signedIn().catch(() => true) === false) {
         setSignedIn(false);
         setCart(null);
+        setCheckoutPending(false);
       }
     } finally {
       setBusy(false);
@@ -56,12 +61,17 @@ export function Catalog({ api, customerApi, title }: {
 
   useEffect(() => {
     let current = true;
-    api.listProducts().then(
+    setProducts(null);
+    setError('');
+    const request = searchQuery && api.searchProducts
+      ? api.searchProducts(searchQuery)
+      : api.listProducts();
+    request.then(
       (result) => { if (current) setProducts(result); },
       (err) => { if (current) setError(String(err)); },
     );
     return () => { current = false; };
-  }, [api]);
+  }, [api, searchQuery]);
 
   return <main style={{ fontFamily: 'system-ui', maxWidth: 700, margin: '48px auto', padding: 16 }}>
     <h1>{title}</h1>
@@ -71,6 +81,7 @@ export function Catalog({ api, customerApi, title }: {
           await customerApi.signOut();
           setSignedIn(false);
           setCart(null);
+          setCheckoutPending(false);
         } else {
           await customerApi.signIn();
           setSignedIn(await customerApi.signedIn());
@@ -79,16 +90,30 @@ export function Catalog({ api, customerApi, title }: {
       {signedIn && <p role="status">Cart items: {cart?.items.reduce((total, item) => total + item.quantity, 0) ?? 0}</p>}
       {accountError && <p role="alert">{accountError}</p>}
     </section>}
+    {customerApi?.checkout && signedIn && <CheckoutPanel api={customerApi.checkout}
+      cart={cart} cartBusy={busy} onCheckoutState={(pending, confirmedCartId) => {
+        setCheckoutPending(pending);
+        if (confirmedCartId) setCart(current => current?.id === confirmedCartId ? null : current);
+      }} />}
     {selectedId ? <>
       <button type="button" onClick={() => setSelectedId(null)}>Back to products</button>
       <ProductDetail key={selectedId} api={api} productId={selectedId} />
-      {customerApi && signedIn && <button type="button" disabled={busy}
+      {customerApi && signedIn && <button type="button" disabled={busy || checkoutPending}
         onClick={() => void accountAction(async () => {
           const currentCart = cart ?? await customerApi.createCart();
           setCart(currentCart);
           setCart(await customerApi.addCartItem(currentCart.id, selectedId, 1));
         })}>Add to cart</button>}
     </> : <>
+      {api.searchProducts && <form onSubmit={(event) => {
+        event.preventDefault();
+        setSearchQuery(searchInput.trim());
+      }}>
+        <label htmlFor="catalog-search">Search products </label>
+        <input id="catalog-search" type="search" maxLength={120}
+          value={searchInput} onChange={(event) => setSearchInput(event.target.value)} />
+        <button type="submit">Search</button>
+      </form>}
       {error && <p role="alert">Could not load products. {error}</p>}
       {!error && products === null && <p role="status">Loading products…</p>}
       {products && <ProductList products={products} onSelect={setSelectedId} />}

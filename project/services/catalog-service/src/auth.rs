@@ -27,6 +27,8 @@ struct Claims {
     sub: String,
     exp: u64,
     typ: Option<String>,
+    #[serde(default)]
+    nexa_roles: Vec<String>,
 }
 
 impl AccessTokens {
@@ -96,6 +98,7 @@ impl AccessTokens {
             Customer {
                 issuer: claims.iss,
                 subject: claims.sub,
+                operator: claims.nexa_roles.iter().any(|role| role == "nexa-operator"),
             },
             claims.exp,
         ))
@@ -114,6 +117,7 @@ pub(crate) fn valid_subject(subject: &str) -> bool {
 pub(crate) struct Customer {
     pub(crate) issuer: String,
     pub(crate) subject: String,
+    pub(crate) operator: bool,
 }
 
 fn unauthorized() -> Response {

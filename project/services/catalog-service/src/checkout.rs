@@ -18,6 +18,10 @@ pub(crate) struct CheckoutDatabases {
 }
 
 impl CheckoutDatabases {
+    pub(crate) fn order_pool(&self) -> &PgPool {
+        &self.order
+    }
+
     pub(crate) async fn from_env() -> Result<Option<Self>, Box<dyn std::error::Error>> {
         let order_url = env::var("ORDER_DATABASE_URL").ok();
         let payment_url = env::var("PAYMENT_DATABASE_URL").ok();

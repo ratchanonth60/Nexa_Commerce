@@ -46,11 +46,24 @@ struct Session {
 struct Access {
     token: String,
     expires_at: u64,
+    operator: bool,
 }
 
 #[derive(Serialize)]
 pub(crate) struct SessionStatus {
     authenticated: bool,
+    operator: bool,
+    expires_at: Option<u64>,
+}
+
+impl Session {
+    fn status(&self) -> SessionStatus {
+        SessionStatus {
+            authenticated: self.access.is_some(),
+            operator: self.access.as_ref().is_some_and(|access| access.operator),
+            expires_at: self.access.as_ref().map(|access| access.expires_at),
+        }
+    }
 }
 
 impl DesktopSession {
@@ -73,15 +86,26 @@ impl DesktopSession {
         self.update(|current| current.access.as_ref().map(|access| access.token.clone()))?
             .ok_or_else(|| "Sign in to use the cart.".into())
     }
+
+    pub(crate) fn operator_bearer(&self) -> Result<String, String> {
+        self.update(|current| {
+            let access = current
+                .access
+                .as_ref()
+                .ok_or("Sign in to use the backoffice.")?;
+            if !access.operator {
+                return Err("This account does not have operator access.".into());
+            }
+            Ok(access.token.clone())
+        })?
+    }
 }
 
 #[tauri::command]
 pub(crate) fn get_session(
     session: tauri::State<'_, DesktopSession>,
 ) -> Result<SessionStatus, String> {
-    session.update(|current| SessionStatus {
-        authenticated: current.access.is_some(),
-    })
+    session.update(|current| current.status())
 }
 
 #[tauri::command]
@@ -89,9 +113,7 @@ pub(crate) fn sign_out(session: tauri::State<'_, DesktopSession>) -> Result<Sess
     session.update(|current| {
         current.revision = current.revision.wrapping_add(1);
         current.access = None;
-        SessionStatus {
-            authenticated: false,
-        }
+        current.status()
     })
 }
 
@@ -103,10 +125,9 @@ pub(crate) async fn sign_in(
         .login
         .try_lock()
         .map_err(|_| "Sign-in is already in progress.")?;
-    let (revision, authenticated) =
-        session.update(|current| (current.revision, current.access.is_some()))?;
-    if authenticated {
-        return Ok(SessionStatus { authenticated });
+    let (revision, status) = session.update(|current| (current.revision, current.status()))?;
+    if status.authenticated {
+        return Ok(status);
     }
 
     let config = OidcConfig::load()?;
@@ -116,9 +137,7 @@ pub(crate) async fn sign_in(
             return Err("Sign-in was cancelled.".into());
         }
         current.access = Some(access);
-        Ok(SessionStatus {
-            authenticated: true,
-        })
+        Ok(current.status())
     })?
 }
 
@@ -168,6 +187,8 @@ struct AccessClaims {
     sub: String,
     exp: u64,
     typ: Option<String>,
+    #[serde(default)]
+    nexa_roles: Vec<String>,
 }
 
 impl OidcConfig {
@@ -316,6 +337,7 @@ impl OidcConfig {
         Ok(Access {
             token: tokens.access_token,
             expires_at: access.exp,
+            operator: access.nexa_roles.iter().any(|role| role == "nexa-operator"),
         })
     }
 }
@@ -626,17 +648,42 @@ mod tests {
     }
 
     #[test]
-    fn expired_access_token_is_removed_before_use() {
+    fn backoffice_requires_an_unexpired_operator_session() {
         let session = DesktopSession::default();
+        assert!(session.operator_bearer().is_err());
+
         session
             .update(|current| {
                 current.access = Some(Access {
-                    token: "expired".into(),
-                    expires_at: 0,
+                    token: "customer".into(),
+                    expires_at: u64::MAX,
+                    operator: false,
                 });
             })
             .unwrap();
+        assert_eq!(session.bearer().unwrap(), "customer");
+        assert!(session.operator_bearer().is_err());
 
+        session
+            .update(|current| {
+                current.access = Some(Access {
+                    token: "operator".into(),
+                    expires_at: u64::MAX,
+                    operator: true,
+                });
+            })
+            .unwrap();
+        assert_eq!(session.operator_bearer().unwrap(), "operator");
+
+        session
+            .current
+            .lock()
+            .unwrap()
+            .access
+            .as_mut()
+            .unwrap()
+            .expires_at = 0;
+        assert!(session.operator_bearer().is_err());
         assert!(session.bearer().is_err());
         assert!(session.current.lock().unwrap().access.is_none());
     }

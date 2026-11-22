@@ -23,6 +23,7 @@ export type Availability = {
 
 export type CommerceApi = {
   listProducts(): Promise<ProductDto[]>;
+  searchProducts?(query: string): Promise<ProductDto[]>;
   getProduct(productId: string): Promise<ProductDto | null>;
   getAvailability(productId: string, quantity: number): Promise<Availability | null>;
   getPriceQuote(productId: string, currency: string, channel: string): Promise<PriceQuote | null>;
@@ -40,4 +41,31 @@ export type CustomerApi = {
   signOut(): Promise<void>;
   createCart(): Promise<Cart>;
   addCartItem(cartId: string, productId: string, quantity: number): Promise<Cart>;
+  checkout?: CheckoutApi;
+};
+
+export type CheckoutStatus = {
+  id: string;
+  status: 'created' | 'confirmed' | 'failed';
+  order_id: string | null;
+  failure_reason_code: string | null;
+};
+
+export type Shipment = {
+  id: string;
+  order_id: string;
+  status: 'pending' | 'packed' | 'dispatched' | 'delivered';
+};
+
+export type ShipmentNotification = {
+  event_id: string;
+  status: 'dispatched' | 'delivered';
+  occurred_at: string;
+};
+
+export type CheckoutApi = {
+  start(cart: Cart, idempotencyKey: string): Promise<CheckoutStatus>;
+  status(checkoutId: string): Promise<CheckoutStatus>;
+  shipment(orderId: string): Promise<Shipment | null>;
+  notifications(orderId: string): Promise<ShipmentNotification[]>;
 };

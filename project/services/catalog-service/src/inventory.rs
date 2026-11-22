@@ -1,13 +1,13 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::{types::Uuid, Error, PgPool, Postgres, Transaction};
+use sqlx::{types::Uuid, Error, FromRow, PgPool, Postgres, Transaction};
 use tracing::error;
 
-use crate::AppState;
+use crate::{auth::Customer, AppState};
 
 const EXPIRATION_BATCH_SIZE: u64 = 100;
 
@@ -18,6 +18,7 @@ enum ReservationStatus {
     Allocated,
     Released,
     Expired,
+    Dispatched,
 }
 
 #[derive(Deserialize)]
@@ -260,6 +261,124 @@ async fn finish_reserved(
     .rows_affected()
         == 1;
     Ok(changed)
+}
+
+pub(crate) async fn dispatch(pool: &PgPool, order_id: Uuid) -> Result<bool, Error> {
+    let mut tx = pool.begin().await?;
+    match lock_status(&mut tx, order_id).await? {
+        Some(ReservationStatus::Dispatched) => return Ok(true),
+        Some(ReservationStatus::Allocated) => {}
+        _ => return Ok(false),
+    }
+    for (product_id, quantity) in load_items(&mut tx, order_id).await? {
+        sqlx::query(
+            "UPDATE stock_record SET on_hand = on_hand - $2, allocated = allocated - $2
+             WHERE product_id = $1",
+        )
+        .bind(product_id)
+        .bind(quantity)
+        .execute(&mut *tx)
+        .await?;
+    }
+    sqlx::query("UPDATE checkout_reservation SET status = 'dispatched' WHERE checkout_id = $1")
+        .bind(order_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
+#[derive(Serialize, FromRow)]
+pub(crate) struct Stock {
+    product_id: Uuid,
+    on_hand: i32,
+    reserved: i32,
+    allocated: i32,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct StockAdjustment {
+    on_hand: i32,
+    expected_on_hand: i32,
+}
+
+pub(crate) async fn read_stock(
+    customer: Customer,
+    State(state): State<AppState>,
+    Path(product_id): Path<Uuid>,
+) -> Result<Json<Stock>, StatusCode> {
+    if !customer.operator {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    sqlx::query_as(
+        "SELECT product_id, on_hand, reserved, allocated FROM stock_record WHERE product_id = $1",
+    )
+    .bind(product_id)
+    .fetch_optional(&state.inventory_db)
+    .await
+    .map_err(stock_error)?
+    .map(Json)
+    .ok_or(StatusCode::NOT_FOUND)
+}
+
+pub(crate) async fn adjust_stock(
+    customer: Customer,
+    State(state): State<AppState>,
+    Path(product_id): Path<Uuid>,
+    Json(change): Json<StockAdjustment>,
+) -> Result<Json<Stock>, StatusCode> {
+    if !customer.operator {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if change.on_hand < 0 || change.expected_on_hand < 0 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let mut tx = state.inventory_db.begin().await.map_err(stock_error)?;
+    let stock = sqlx::query_as::<_, Stock>(
+        "SELECT product_id, on_hand, reserved, allocated FROM stock_record WHERE product_id = $1 FOR UPDATE",
+    )
+    .bind(product_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(stock_error)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    if stock.on_hand != change.expected_on_hand || change.on_hand < stock.reserved + stock.allocated
+    {
+        return Err(StatusCode::CONFLICT);
+    }
+    if change.on_hand == stock.on_hand {
+        return Ok(Json(stock));
+    }
+
+    sqlx::query("UPDATE stock_record SET on_hand = $2 WHERE product_id = $1")
+        .bind(product_id)
+        .bind(change.on_hand)
+        .execute(&mut *tx)
+        .await
+        .map_err(stock_error)?;
+    sqlx::query(
+        "INSERT INTO stock_adjustment (product_id, before_on_hand, after_on_hand, actor_issuer, actor_subject)
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(product_id)
+    .bind(stock.on_hand)
+    .bind(change.on_hand)
+    .bind(customer.issuer)
+    .bind(customer.subject)
+    .execute(&mut *tx)
+    .await
+    .map_err(stock_error)?;
+    tx.commit().await.map_err(stock_error)?;
+    Ok(Json(Stock {
+        on_hand: change.on_hand,
+        ..stock
+    }))
+}
+
+fn stock_error(err: Error) -> StatusCode {
+    error!(error = %err, "inventory operation failed");
+    StatusCode::INTERNAL_SERVER_ERROR
 }
 
 #[cfg(test)]

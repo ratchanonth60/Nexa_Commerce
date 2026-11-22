@@ -2,9 +2,12 @@
 mod auth;
 mod cart;
 mod checkout;
+mod fulfillment;
 mod inventory;
+mod operations;
 mod payment;
 mod pricing;
+mod search;
 mod web_session;
 
 use axum::{
@@ -26,6 +29,7 @@ struct AppState {
     inventory_db: PgPool,
     cart_db: PgPool,
     checkout: Option<checkout::CheckoutDatabases>,
+    fulfillment: Option<PgPool>,
     access_tokens: Option<auth::AccessTokens>,
     web_sessions: Option<std::sync::Arc<web_session::WebSessions>>,
 }
@@ -96,6 +100,7 @@ fn commerce_app(state: AppState) -> Router {
         .route("/healthz", get(health))
         .route("/api/v1/catalog/products", get(list_products))
         .route("/api/v1/catalog/products/{productId}", get(get_product))
+        .route("/api/v1/search/products", get(search::search_products))
         .route("/api/v1/pricing/quotes", get(pricing::get_quote))
         .route(
             "/api/v1/inventory/availability",
@@ -109,6 +114,22 @@ fn commerce_app(state: AppState) -> Router {
                 .route("/api/v1/checkouts", post(checkout::create))
                 .route("/api/v1/checkouts/{checkoutId}", get(checkout::status))
                 .route("/api/v1/orders/{orderId}", get(checkout::order))
+                .route(
+                    "/api/v1/orders/{orderId}/shipment",
+                    get(operations::read_customer_shipment),
+                )
+                .route(
+                    "/api/v1/orders/{orderId}/notifications",
+                    get(operations::read_notifications),
+                )
+                .route(
+                    "/api/v1/ops/shipments/{orderId}",
+                    get(operations::read_operator_shipment).post(operations::advance_shipment),
+                )
+                .route(
+                    "/api/v1/ops/inventory/{productId}",
+                    get(inventory::read_stock).patch(inventory::adjust_stock),
+                )
                 .route("/auth/login", get(web_session::login))
                 .route("/auth/callback", get(web_session::callback))
                 .route("/auth/session", get(web_session::session))
@@ -156,6 +177,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let web_sessions = web_session::WebSessions::from_env(access_tokens.as_ref())?;
 
     let checkout = checkout::CheckoutDatabases::from_env().await?;
+    let fulfillment = if let Ok(url) = std::env::var("FULFILLMENT_DATABASE_URL") {
+        let order = checkout
+            .as_ref()
+            .ok_or("fulfillment requires checkout database configuration")?;
+        let db = PgPool::connect(&url).await?;
+        sqlx::migrate!("./fulfillment-migrations").run(&db).await?;
+        tokio::spawn(operations::deliver_orders(
+            order.order_pool().clone(),
+            db.clone(),
+            inventory_db.clone(),
+        ));
+        Some(db)
+    } else {
+        None
+    };
     if let Some(databases) = checkout.clone() {
         tokio::spawn(checkout::run(databases, inventory_db.clone()));
     }
@@ -166,6 +202,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         inventory_db,
         cart_db,
         checkout,
+        fulfillment,
         access_tokens,
         web_sessions,
     });
@@ -192,6 +229,7 @@ mod tests {
             inventory_db: db.clone(),
             cart_db: db,
             checkout: None,
+            fulfillment: None,
             access_tokens: None,
             web_sessions: None,
         })

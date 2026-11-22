@@ -77,7 +77,19 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U nexa -d payment_db"
           --health-interval 5s --health-timeout 3s --health-retries 10
+      fulfillment-postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nexa
+          POSTGRES_PASSWORD: nexa_dev_only
+          POSTGRES_DB: fulfillment_db
+        ports:
+          - 5438:5432
+        options: >-
+          --health-cmd "pg_isready -U nexa -d fulfillment_db"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     env:
+      FULFILLMENT_DATABASE_URL: postgres://nexa:nexa_dev_only@127.0.0.1:5438/fulfillment_db
       CHECKOUT_SANDBOX: 'true'
       ORDER_DATABASE_URL: postgres://nexa:nexa_dev_only@127.0.0.1:5436/order_db
       PAYMENT_DATABASE_URL: postgres://nexa:nexa_dev_only@127.0.0.1:5437/payment_db
@@ -125,6 +137,7 @@ jobs:
           python3 services/catalog-service/tests/checkout_smoke.py "$cart_keys/key.pem"
           docker exec "${{ job.services.order-postgres.id }}" psql -v ON_ERROR_STOP=1 -U nexa -d order_db -At \
             -c "SELECT count(*) FROM order_outbox WHERE event_type = 'order.confirmed.v1'" | grep -x 1
+          python3 services/catalog-service/tests/operations_smoke.py "$cart_keys/key.pem"
           docker exec "${{ job.services.postgres.id }}" psql -v ON_ERROR_STOP=1 -U nexa -d catalog_db \
             -c "UPDATE product SET status = 'archived' WHERE sku = 'DEMO-MUG'"
           status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$product_url")
