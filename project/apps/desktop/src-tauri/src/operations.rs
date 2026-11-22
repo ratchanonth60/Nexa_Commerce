@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::auth::DesktopSession;
 
-const OPERATIONS_URL: &str = "http://127.0.0.1:8082/api/v1/ops";
+const OPERATIONS_URL: &str = "/api/v1/ops";
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct Stock {
@@ -141,7 +141,10 @@ fn request(
         .build()
         .map_err(|_| "Could not initialize the backoffice client.")?;
     Ok(client
-        .request(method, format!("{OPERATIONS_URL}/{resource}/{id}"))
+        .request(
+            method,
+            crate::gateway_url(&format!("{OPERATIONS_URL}/{resource}/{id}"))?,
+        )
         .bearer_auth(token))
 }
 

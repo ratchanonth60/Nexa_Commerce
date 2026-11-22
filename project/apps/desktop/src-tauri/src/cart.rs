@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::auth::DesktopSession;
 
-const CARTS_URL: &str = "http://127.0.0.1:8082/api/v1/carts";
+const CARTS_URL: &str = "/api/v1/carts";
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct Cart {
@@ -80,7 +80,7 @@ async fn send(
         .timeout(Duration::from_secs(10))
         .build()
         .map_err(|_| "Could not initialize the cart client.")?
-        .request(method, url)
+        .request(method, crate::gateway_url(url)?)
         .bearer_auth(token);
     if let Some(item) = item {
         request = request.json(item);

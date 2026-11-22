@@ -2,7 +2,7 @@
 
 **Project name:** Nexa Commerce  
 **Architecture:** Domain-Driven Design / Database-per-Service / Event-Driven / Saga Checkout  
-**Scope:** Design documentation and a runnable Catalog demo.
+**Scope:** Design documentation and a runnable commerce sandbox with Web Storefront, Tauri Desktop, and Rust Gateway.
 
 ## เอกสารออกแบบ
 
@@ -57,12 +57,12 @@ The **Nexa Commerce** target design is a new proposal adapted from the **Django 
 - API/OpenAPI draft + OrderConfirmed event JSON Schema
 - Tauri PKCE/OIDC, scoped capabilities, CSP, signed updater, offline strategy
 - Infrastructure, CI/CD, implementation roadmap
-- Catalog demo in `project/`: Rust Catalog GET API + React Web + React/Tauri Desktop + shared component and contracts. **Development sample only, unauthenticated, not a finished app.**
+- Runnable workspace in `project/` with Keycloak customer sign-in, cart, sandbox checkout, operator fulfillment, catalog search, and recovery and observability tools.
 
 เริ่มอ่าน [คู่มือการออกแบบ Full-Stack](docs-desige/06_Rust_Tauri_React_Fullstack/02_Documentation/README_TH.md)
 
 
 ## เริ่มรันและทำงานกับ agents
 
-- วิธีรัน Rust Catalog API, React Web และ Tauri Desktop อยู่ใน [คู่มือ Catalog Demo](project/README.md)
+- วิธีรัน Rust Gateway, React Storefront และ Tauri Desktop อยู่ใน [คู่มือรันโปรเจกต์](project/README.md)
 - วิธีแบ่งงานและตรวจผลรวมสำหรับ lead agent และ subagents อยู่ใน [AGENTS.md](AGENTS.md)

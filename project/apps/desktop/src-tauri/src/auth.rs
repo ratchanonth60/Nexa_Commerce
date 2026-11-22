@@ -193,14 +193,19 @@ struct AccessClaims {
 
 impl OidcConfig {
     fn load() -> Result<Self, String> {
-        fn required(name: &str) -> Result<String, String> {
-            env::var(name)
-                .ok()
+        fn required(name: &str, configured: Option<&str>) -> Result<String, String> {
+            configured
+                .map(str::to_owned)
+                .or_else(|| env::var(name).ok())
                 .filter(|value| !value.trim().is_empty())
                 .ok_or_else(|| format!("Set {name} before starting the desktop app."))
         }
 
-        let scopes = env::var("OIDC_DESKTOP_SCOPES").unwrap_or_else(|_| "openid".into());
+        let scopes = option_env!("OIDC_DESKTOP_SCOPES")
+            .map(str::to_owned)
+            .map(Ok)
+            .unwrap_or_else(|| env::var("OIDC_DESKTOP_SCOPES"))
+            .unwrap_or_else(|_| "openid".into());
         if !scopes
             .split_ascii_whitespace()
             .any(|scope| scope == "openid")
@@ -209,11 +214,17 @@ impl OidcConfig {
         }
 
         Ok(Self {
-            issuer: required("OIDC_ISSUER")?,
-            client_id: required("OIDC_DESKTOP_CLIENT_ID")?,
-            api_audience: required("OIDC_API_AUDIENCE")?,
+            issuer: required("OIDC_ISSUER", option_env!("OIDC_ISSUER"))?,
+            client_id: required(
+                "OIDC_DESKTOP_CLIENT_ID",
+                option_env!("OIDC_DESKTOP_CLIENT_ID"),
+            )?,
+            api_audience: required("OIDC_API_AUDIENCE", option_env!("OIDC_API_AUDIENCE"))?,
             scopes,
-            keycloak_tokens: env::var("OIDC_KEYCLOAK_ACCESS_TOKENS").as_deref() == Ok("true"),
+            keycloak_tokens: option_env!("OIDC_KEYCLOAK_ACCESS_TOKENS").map_or_else(
+                || env::var("OIDC_KEYCLOAK_ACCESS_TOKENS").as_deref() == Ok("true"),
+                |value| value == "true",
+            ),
         })
     }
 

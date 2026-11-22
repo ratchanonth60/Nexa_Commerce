@@ -164,3 +164,4 @@ jobs:
       - run: pnpm --filter @nexa/storefront-web build
       - run: pnpm --filter @nexa/desktop build
       - run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features signed-updater

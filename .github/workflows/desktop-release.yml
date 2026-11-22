@@ -1,0 +1,71 @@
+name: Build signed desktop update
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-update:
+    runs-on: macos-latest
+    environment: desktop-release
+    defaults:
+      run:
+        working-directory: project/apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: project/package.json
+      - name: Install frontend dependencies
+        working-directory: project
+        run: pnpm install --frozen-lockfile
+      - name: Install Universal macOS Rust targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Configure update verification
+        env:
+          TAURI_UPDATER_ENDPOINT: ${{ vars.TAURI_UPDATER_ENDPOINT }}
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+        run: node scripts/updater-config.mjs "$RUNNER_TEMP/nexa-updater.json"
+      - name: Build and sign archive
+        env:
+          NEXA_GATEWAY_ORIGIN: ${{ vars.NEXA_GATEWAY_ORIGIN }}
+          OIDC_ISSUER: ${{ vars.OIDC_ISSUER }}
+          OIDC_DESKTOP_CLIENT_ID: ${{ vars.OIDC_DESKTOP_CLIENT_ID }}
+          OIDC_API_AUDIENCE: ${{ vars.OIDC_API_AUDIENCE }}
+          OIDC_KEYCLOAK_ACCESS_TOKENS: ${{ vars.OIDC_KEYCLOAK_ACCESS_TOKENS }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          test -n "$TAURI_SIGNING_PRIVATE_KEY"
+          node --input-type=module <<'JS'
+          for (const name of ['NEXA_GATEWAY_ORIGIN', 'OIDC_ISSUER']) {
+            const url = URL.parse(process.env[name] ?? '');
+            if (!url || url.protocol !== 'https:' || url.username || url.password ||
+                url.search || url.hash || (name === 'NEXA_GATEWAY_ORIGIN' && url.pathname !== '/')) {
+              throw new Error(name + ' must be an HTTPS URL.');
+            }
+          }
+          for (const name of ['OIDC_DESKTOP_CLIENT_ID', 'OIDC_API_AUDIENCE']) {
+            if (!process.env[name]?.trim()) throw new Error('Set ' + name);
+          }
+          JS
+          pnpm tauri build --ci --target universal-apple-darwin --bundles app \
+            --features signed-updater --config "$RUNNER_TEMP/nexa-updater.json" -- --locked
+      - name: Check update archive and signature
+        run: |
+          archives=(src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz)
+          test "${#archives[@]}" -eq 1
+          test -s "${archives[0]}"
+          test -s "${archives[0]}.sig"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexa-desktop-macos-universal-update
+          if-no-files-found: error
+          path: |
+            project/apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            project/apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig

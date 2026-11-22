@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { CommerceApi, CustomerApi } from '@nexa/contracts';
 import { Catalog } from '@nexa/ui';
 import { Backoffice } from './backoffice';
+import { DesktopUpdater } from './updater';
 
 const api: CommerceApi = {
   listProducts: () => invoke('list_products'),
@@ -51,6 +52,7 @@ function Desktop() {
   return <>
     <Catalog api={api} customerApi={customerApi} title="Nexa Commerce · Desktop (Tauri)" />
     {session?.operator && <Backoffice />}
+    <DesktopUpdater />
   </>;
 }
 

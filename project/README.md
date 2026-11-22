@@ -1,6 +1,6 @@
-# Nexa Commerce catalog demo
+# Nexa Commerce local sandbox
 
-The web storefront and the Tauri desktop app share a React product list and read the same public catalog endpoint. The browser uses HTTP directly. Tauri uses a Rust IPC command to call the API.
+The React storefront and Tauri desktop app share a catalog and cart UI. The Rust gateway serves the catalog, cart, checkout and shipment APIs. The browser uses the gateway’s same-origin session routes, and Tauri calls the gateway through Rust IPC.
 
 ## Run locally
 
@@ -187,3 +187,18 @@ values in Inventory.
 - Run `python3 infra/observability/load-smoke.py` against the local gateway. Record concurrency, request count, p95 latency, and errors. Use staging traffic and production SLOs to set release capacity thresholds.
 - After placing and dispatching a sandbox order in the Compose stack, run `bash infra/backup-drill.sh`. The drill restores all seven databases into an isolated PostgreSQL container and compares counts plus order and fulfillment records. Production recovery also needs coordinated recovery points across databases and Identity Provider backups.
 - Configure the production identity provider and key rotation. Use HTTPS for the storefront and keep sandbox credentials and payment tokens in local development. Verify the payment provider, webhook handling, shipping addresses and policies in staging before charging customers.
+
+### Signed desktop releases
+
+The **Build signed desktop update** workflow builds a Universal macOS archive.
+Configure the `desktop-release` GitHub environment with
+`TAURI_UPDATER_ENDPOINT` and `TAURI_UPDATER_PUBLIC_KEY`, plus secrets
+`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+Set `NEXA_GATEWAY_ORIGIN` to the hosted HTTPS gateway origin and configure
+`OIDC_ISSUER`, `OIDC_DESKTOP_CLIENT_ID`, and `OIDC_API_AUDIENCE` for that release.
+Use `OIDC_KEYCLOAK_ACCESS_TOKENS=true` for the compatible Keycloak token format.
+
+The workflow uploads the signed update archive and signature as GitHub Actions
+artifacts. The configured HTTPS manifest must describe the archive URL,
+version, and signature. Verify an update from the previous version in staging.
+Apple distribution also requires the applicable signing and notarization.
