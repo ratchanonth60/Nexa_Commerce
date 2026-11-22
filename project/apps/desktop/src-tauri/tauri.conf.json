@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nexa Commerce Desktop",
+  "version": "0.1.0",
+  "identifier": "com.nexacommerce.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
+    "devUrl": "http://127.0.0.1:5174",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Nexa Commerce Desktop",
+        "width": 1100,
+        "height": 750
+      }
+    ],
+    "security": {
+      "capabilities": [
+        "main"
+      ],
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "all"
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+%% Nexa Commerce / Order & Checkout (order_db)
+erDiagram
+    CHECKOUT_SESSION ||--o{ ORDERS : checkout_id
+    ORDERS ||--o{ ORDER_ITEM : order_id
+    ORDERS ||--o{ ORDER_ADDRESS : order_id
+    ORDERS ||--o{ ORDER_DISCOUNT : order_id
+    ORDERS ||--o{ ORDER_STATUS_HISTORY : order_id
+    CHECKOUT_SESSION {
+        uuid id PK
+        uuid cart_id
+        uuid customer_id
+        varchar idempotency_key
+        varchar state
+        datetime expires_at
+    }
+    ORDERS {
+        uuid id PK
+        uuid checkout_id FK
+        varchar order_number
+        uuid customer_id
+        varchar currency
+        decimal grand_total
+        varchar status
+    }
+    ORDER_ITEM {
+        uuid id PK
+        uuid order_id FK
+        uuid product_id
+        varchar sku_snapshot
+        varchar title_snapshot
+        int quantity
+        decimal unit_price
+        decimal tax_amount
+    }
+    ORDER_ADDRESS {
+        uuid id PK
+        uuid order_id FK
+        varchar address_type
+        json snapshot_json
+    }
+    ORDER_DISCOUNT {
+        uuid id PK
+        uuid order_id FK
+        varchar voucher_code
+        decimal amount
+    }
+    ORDER_STATUS_HISTORY {
+        uuid id PK
+        uuid order_id FK
+        varchar status
+        datetime changed_at
+    }

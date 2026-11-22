@@ -1,0 +1,45 @@
+digraph NexaFullStack {
+  graph [label="NEXA COMMERCE | RUST + TAURI + REACT",labelloc=t,fontname="DejaVu Sans",fontsize=25,fontcolor="#102E4E",bgcolor="white",rankdir=LR,ranksep=0.85,nodesep=0.35,pad=0.28,splines=polyline,compound=true];
+  node [shape=box,style="rounded,filled",fontname="DejaVu Sans",fontsize=11,color="#C4D6E7",fillcolor="#F7FAFE",fontcolor="#12304C",margin="0.17,0.11"];
+  edge [color="#7E99B4",arrowsize=0.7,penwidth=1.4,fontname="DejaVu Sans",fontsize=9,fontcolor="#526F88"];
+  subgraph cluster_clients {label="CLIENT APPLICATIONS"; labelloc=t; style="rounded,filled"; fillcolor="#EFF6FF"; color="#BCD6F5";
+     web [label="Storefront Web\nReact + TypeScript\nVite + TanStack Query",fillcolor="#FFFFFF"];
+     desk [label="Desktop UI\nReact + TypeScript\nShared components",fillcolor="#FFFFFF"];
+     tauri [label="Tauri v2 / Rust\nOS integration + secure storage\nHTTP client / IPC",fillcolor="#DDF8F4",color="#86CFC2"];
+     web -> tauri [style=invis];
+     desk -> tauri [label="invoke()",color="#17A398"];
+  }
+  subgraph cluster_edge {label="EDGE / ACCESS";style="rounded,filled";fillcolor="#FFF7E8";color="#F5D8A6";
+     idp [label="OIDC Identity Provider\nPKCE / JWT / RBAC",fillcolor="#FFFDF7"];
+     gw [label="Rust API Gateway / BFF\nAxum + OpenAPI\nRate limit / Routing / JWT",fillcolor="#FFE5B5",color="#F3B45B"];
+  }
+  subgraph cluster_services {label="RUST MICROSERVICES | Axum + Tokio + SQLx";style="rounded,filled";fillcolor="#EFFAF5";color="#B4DFCC";
+     node [fillcolor="#FFFFFF",color="#AAD5C3",width=1.58];
+     customer [label="Customer"];
+     catalog [label="Catalog"];
+     pricing [label="Pricing & Promo"];
+     inventory [label="Inventory"];
+     cart [label="Cart"];
+     order [label="Order & Checkout\nSaga Orchestrator"];
+     payment [label="Payment"];
+     fulfill [label="Fulfillment"];
+  }
+  subgraph cluster_data {label="DATA + EVENTS";style="rounded,filled";fillcolor="#F6F1FF";color="#CFC0F2";
+     databases [label="PostgreSQL\n8 isolated service databases\nNo cross-service SQL FK",fillcolor="#FFFFFF",color="#A995DB"];
+     broker [label="RabbitMQ Event Bus\nOutbox + Idempotent consumers",fillcolor="#ECE2FF",color="#A995DB"];
+     redis [label="Redis\nCache / Rate limiting",fillcolor="#FFFFFF",color="#A995DB"];
+  }
+  observability [label="OpenTelemetry + Tracing\nMetrics, Logs, Distributed Traces",fillcolor="#EEF2F7",color="#B4C5D7"];
+  web -> gw [label="HTTPS / cookie session",minlen=2];
+  tauri -> gw [label="HTTPS / OAuth token",minlen=2];
+  web -> idp [style=dashed,label="login"];
+  tauri -> idp [style=dashed,label="system browser PKCE"];
+  gw -> {customer catalog pricing inventory cart order payment fulfill} [color="#8FB7A4"];
+  {customer catalog pricing inventory cart order payment fulfill} -> databases [color="#A995DB",minlen=2];
+  order -> broker [label="events",style=dashed];
+  catalog -> broker [style=dashed];
+  inventory -> broker [style=dashed];
+  broker -> fulfill [style=dashed,constraint=false];
+  gw -> redis [style=dashed,label="cache/rate",constraint=false];
+  broker -> observability [style=dashed,constraint=false];
+}

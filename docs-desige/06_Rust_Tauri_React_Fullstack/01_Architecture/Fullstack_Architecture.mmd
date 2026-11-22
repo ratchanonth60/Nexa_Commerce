@@ -1,0 +1,30 @@
+flowchart LR
+  subgraph Clients[Client Apps]
+    WEB[Web · React + TS + Vite]
+    UI[Desktop UI · React + TS]
+    TAURI[Tauri v2 · Rust commands]
+    UI -->|invoke| TAURI
+  end
+  subgraph Edge[Edge & Identity]
+    IDP[OIDC Identity Provider]
+    GW[Axum API Gateway / BFF]
+  end
+  WEB -->|HTTPS cookie| GW
+  TAURI -->|HTTPS access token| GW
+  WEB -.->|login| IDP
+  TAURI -.->|system browser + PKCE| IDP
+  subgraph RustServices[Rust Axum + Tokio + SQLx]
+    CUSTOMER[Customer]
+    CATALOG[Catalog]
+    PRICING[Pricing + Promotion]
+    INV[Inventory]
+    CART[Cart]
+    ORDER[Order + Checkout]
+    PAY[Payment]
+    FULFILL[Fulfillment]
+  end
+  GW --> CUSTOMER & CATALOG & PRICING & INV & CART & ORDER & PAY & FULFILL
+  RustServices -->|owned data only| DBS[(8 PostgreSQL databases)]
+  ORDER -->|transactional outbox| MQ[(RabbitMQ)]
+  MQ -.-> FULFILL
+  GW --> REDIS[(Redis)]

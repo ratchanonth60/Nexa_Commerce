@@ -1,0 +1,44 @@
+%% Nexa Commerce / Inventory (inventory_db)
+erDiagram
+    PARTNER ||--o{ WAREHOUSE : partner_id
+    WAREHOUSE ||--o{ STOCK_RECORD : warehouse_id
+    STOCK_RECORD ||--o{ STOCK_RESERVATION : stock_record_id
+    STOCK_RECORD ||--o{ STOCK_MOVEMENT : stock_record_id
+    STOCK_RESERVATION ||--o{ STOCK_MOVEMENT : reservation_id
+    PARTNER {
+        uuid id PK
+        varchar code
+        varchar name
+    }
+    WAREHOUSE {
+        uuid id PK
+        uuid partner_id FK
+        varchar code
+        varchar name
+    }
+    STOCK_RECORD {
+        uuid id PK
+        uuid warehouse_id FK
+        uuid product_id
+        varchar partner_sku
+        int on_hand
+        int reserved
+        int allocated
+        int version
+    }
+    STOCK_RESERVATION {
+        uuid id PK
+        uuid stock_record_id FK
+        uuid order_id
+        int quantity
+        varchar status
+        datetime expires_at
+    }
+    STOCK_MOVEMENT {
+        uuid id PK
+        uuid stock_record_id FK
+        uuid reservation_id FK
+        int delta
+        varchar reason
+        datetime created_at
+    }

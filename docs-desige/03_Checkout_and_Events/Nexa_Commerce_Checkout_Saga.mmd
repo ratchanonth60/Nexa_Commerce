@@ -1,0 +1,40 @@
+%% Nexa Commerce - Orchestrated Checkout Saga
+sequenceDiagram
+    autonumber
+    actor Buyer
+    participant API as API Gateway
+    participant Order as Order and Checkout
+    participant Price as Pricing and Promotion
+    participant Stock as Inventory
+    participant Pay as Payment
+    participant Bus as Event Bus
+    Buyer->>API: POST /checkouts (Idempotency-Key)
+    API->>Order: Start checkout
+    Order->>Price: Validate quote and voucher
+    Price-->>Order: Signed quote with expiry
+    Order->>Stock: Reserve items (order_id, TTL)
+    alt Out of stock
+        Stock-->>Order: Rejected
+        Order-->>Buyer: 409 Stock unavailable
+    else Reserved
+        Stock-->>Order: reservation_ids
+        Order->>Pay: Authorize(amount, order_id, idem key)
+        alt Authorization declined
+            Pay-->>Order: Declined
+            Order->>Stock: Release reservations
+            Order-->>Buyer: Payment declined
+        else Authorized
+            Pay-->>Order: Authorized
+            Order->>Stock: Commit reservation to allocation
+            alt Inventory commit fails
+                Order->>Pay: Void authorization
+                Order->>Stock: Release reservations
+                Order-->>Buyer: Checkout failed; retry safely
+            else Stock committed
+                Order->>Order: Confirm order + immutable snapshots + outbox in one transaction
+                Order->>Bus: OrderConfirmed (via outbox)
+                Order-->>Buyer: 201 Order confirmed
+            end
+            Note over Pay,Bus: Capture according to fulfillment policy; refund/void on later failure
+        end
+    end

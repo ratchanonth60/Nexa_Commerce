@@ -1,0 +1,25 @@
+digraph Clients {
+ graph [label="NEXA COMMERCE | SHARED FRONTEND, SEPARATE TRANSPORT",labelloc=t,fontsize=22,fontname="DejaVu Sans",fontcolor="#102E4E",bgcolor="white",rankdir=TB,nodesep=0.4,ranksep=0.65,pad=0.3];
+ node [shape=box,style="rounded,filled",fontname="DejaVu Sans",fontsize=11,color="#AFC6DD",fillcolor="#F5F9FE",margin="0.22,0.16"];
+ edge [color="#8499AC",arrowsize=.7,penwidth=1.4];
+ subgraph cluster_shared {label="SHARED TYPESCRIPT PACKAGES (USED BY BOTH APPS)";style="rounded,filled";color="#B9D3EF";fillcolor="#EFF6FF";
+  ui [label="@nexa/ui\nReact components + design tokens",fillcolor="#FFFFFF"];
+  types [label="@nexa/contracts\nDTOs + Zod schemas + OpenAPI types",fillcolor="#FFFFFF"];
+  hooks [label="@nexa/api-client\nCommerceApi interface + React Query",fillcolor="#FFFFFF"];
+ }
+ subgraph cluster_web {label="BROWSER / WEB APP";style="rounded,filled";color="#BEE1CE";fillcolor="#F1FCF5";
+  storefront [label="apps/storefront-web\nReact + TS + Vite",fillcolor="#FFFFFF"];
+  web_transport [label="Web transport\nfetch + BFF session cookie",fillcolor="#DCF8E9"];
+ }
+ subgraph cluster_desktop {label="DESKTOP / TAURI APP";style="rounded,filled";color="#F3D4A0";fillcolor="#FFF9ED";
+  desktop [label="apps/desktop\nReact + TS + Vite",fillcolor="#FFFFFF"];
+  ipc [label="Tauri invoke()\nNarrow privileged commands",fillcolor="#FFE6B8"];
+  rust [label="src-tauri / Rust\nHTTP, OIDC token, files, printers",fillcolor="#FFE6B8"];
+ }
+ gw [label="Rust Axum API Gateway\n/api/v1/*",color="#AFB9E4",fillcolor="#EDEFFF"];
+ storefront -> web_transport;
+ desktop -> ipc;
+ ipc -> rust;
+ web_transport -> gw;
+ rust -> gw;
+}

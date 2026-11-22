@@ -1,0 +1,26 @@
+%% Nexa Commerce - Proposed Microservices Architecture
+flowchart TB
+    Client[Web / Mobile / Admin] --> Gateway[API Gateway / BFF]
+    Gateway --> Customer[Customer Service]
+    Gateway --> Catalog[Catalog Service]
+    Gateway --> Price[Pricing and Promotion Service]
+    Gateway --> Cart[Cart Service]
+    Gateway --> Order[Order and Checkout Service]
+    Gateway --> Inv[Inventory Service]
+    Gateway --> Payment[Payment Service]
+    Gateway --> Fulfill[Fulfillment Service]
+    Customer --> CustomerDB[(customer_db)]
+    Catalog --> CatalogDB[(catalog_db)]
+    Price --> PriceDB[(pricing_db)]
+    Cart --> CartDB[(cart_db)]
+    Order --> OrderDB[(order_db)]
+    Inv --> InvDB[(inventory_db)]
+    Payment --> PaymentDB[(payment_db)]
+    Fulfill --> FulfillDB[(fulfillment_db)]
+    Catalog -. ProductChanged .-> Bus[(Event Bus)]
+    Inv -. StockChanged .-> Bus
+    Order -. OrderConfirmed .-> Bus
+    Payment -. PaymentCaptured .-> Bus
+    Fulfill -. ShipmentDispatched .-> Bus
+    Bus --> Search[Search Projection]
+    Bus --> Notify[Notification Worker]

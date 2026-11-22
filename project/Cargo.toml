@@ -1,0 +1,4 @@
+[workspace]
+resolver = "2"
+members = ["services/catalog-service"]
+exclude = ["apps/desktop/src-tauri"]

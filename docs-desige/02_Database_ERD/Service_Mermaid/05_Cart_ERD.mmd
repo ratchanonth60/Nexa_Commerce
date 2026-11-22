@@ -1,0 +1,17 @@
+%% Nexa Commerce / Cart (cart_db)
+erDiagram
+    CART ||--o{ CART_ITEM : cart_id
+    CART {
+        uuid id PK
+        uuid customer_id
+        varchar session_key
+        varchar status
+        datetime updated_at
+    }
+    CART_ITEM {
+        uuid id PK
+        uuid cart_id FK
+        uuid product_id
+        int quantity
+        json selected_options
+    }

@@ -1,0 +1,11 @@
+﻿event_type,producer,example_consumers,purpose
+catalog.product.updated.v1,Catalog,Search/Cart/Pricing,Product metadata changed
+pricing.price.changed.v1,Pricing,Cart/Search,Effective selling price changed
+inventory.stock.changed.v1,Inventory,Search/Cart,Available stock changed
+inventory.reservation.expired.v1,Inventory,Order,Reservation TTL elapsed
+order.confirmed.v1,Order,Payment/Fulfillment/Notification,Order committed and confirmed
+order.cancelled.v1,Order,Inventory/Payment/Notification,Order cancelled
+payment.authorized.v1,Payment,Order,Payment authorization approved
+payment.captured.v1,Payment,Order/Notification,Payment captured
+payment.failed.v1,Payment,Order/Notification,Payment failed
+fulfillment.shipment.dispatched.v1,Fulfillment,Order/Notification,Shipment given to carrier

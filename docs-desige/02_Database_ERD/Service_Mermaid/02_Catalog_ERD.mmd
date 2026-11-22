@@ -1,0 +1,52 @@
+%% Nexa Commerce / Catalog (catalog_db)
+erDiagram
+    PRODUCT_CLASS ||--o{ PRODUCT : product_class_id
+    PRODUCT ||--o{ PRODUCT : parent_id
+    CATEGORY ||--o{ CATEGORY : parent_id
+    PRODUCT ||--o{ PRODUCT_CATEGORY : product_id
+    CATEGORY ||--o{ PRODUCT_CATEGORY : category_id
+    PRODUCT_CLASS ||--o{ PRODUCT_ATTRIBUTE : product_class_id
+    PRODUCT ||--o{ ATTRIBUTE_VALUE : product_id
+    PRODUCT_ATTRIBUTE ||--o{ ATTRIBUTE_VALUE : attribute_id
+    PRODUCT ||--o{ PRODUCT_IMAGE : product_id
+    PRODUCT_CLASS {
+        uuid id PK
+        varchar code
+        varchar name
+    }
+    PRODUCT {
+        uuid id PK
+        uuid product_class_id FK
+        uuid parent_id FK
+        varchar sku
+        varchar title
+        varchar status
+    }
+    CATEGORY {
+        uuid id PK
+        uuid parent_id FK
+        varchar name
+        varchar slug
+    }
+    PRODUCT_CATEGORY {
+        uuid product_id
+        uuid category_id
+    }
+    PRODUCT_ATTRIBUTE {
+        uuid id PK
+        uuid product_class_id FK
+        varchar code
+        varchar data_type
+    }
+    ATTRIBUTE_VALUE {
+        uuid id PK
+        uuid product_id FK
+        uuid attribute_id FK
+        json value_json
+    }
+    PRODUCT_IMAGE {
+        uuid id PK
+        uuid product_id FK
+        text image_url
+        int sort_order
+    }

@@ -1,0 +1,20 @@
+%% Nexa Commerce / Customer (customer_db)
+erDiagram
+    CUSTOMER ||--o{ CUSTOMER_ADDRESS : customer_id
+    CUSTOMER {
+        uuid id PK
+        varchar oidc_subject
+        varchar email
+        varchar status
+        datetime created_at
+    }
+    CUSTOMER_ADDRESS {
+        uuid id PK
+        uuid customer_id FK
+        varchar name
+        varchar line1
+        varchar city
+        varchar postcode
+        varchar country_code
+        boolean is_default
+    }

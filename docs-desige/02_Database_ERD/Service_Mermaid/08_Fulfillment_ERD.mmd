@@ -1,0 +1,24 @@
+%% Nexa Commerce / Fulfillment (fulfillment_db)
+erDiagram
+    SHIPMENT ||--o{ SHIPMENT_ITEM : shipment_id
+    SHIPMENT ||--o{ SHIPMENT_EVENT : shipment_id
+    SHIPMENT {
+        uuid id PK
+        uuid order_id
+        uuid warehouse_id
+        varchar carrier
+        varchar tracking_number
+        varchar status
+    }
+    SHIPMENT_ITEM {
+        uuid id PK
+        uuid shipment_id FK
+        uuid order_item_id
+        int quantity
+    }
+    SHIPMENT_EVENT {
+        uuid id PK
+        uuid shipment_id FK
+        varchar event_code
+        datetime event_time
+    }

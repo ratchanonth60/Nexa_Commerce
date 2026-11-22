@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.nexacommerce.example/events/order.confirmed.v1.schema.json",
+  "title": "OrderConfirmedV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "schema_version",
+    "aggregate_id",
+    "occurred_at",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_type": {
+      "const": "order.confirmed.v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "aggregate_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "trace_id": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "order_id",
+        "customer_id",
+        "currency",
+        "grand_total_minor"
+      ],
+      "properties": {
+        "order_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "customer_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "grand_total_minor": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        }
+      }
+    }
+  }
+}

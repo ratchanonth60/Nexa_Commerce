@@ -1,0 +1,31 @@
+%% Nexa Commerce / Payment (payment_db)
+erDiagram
+    PAYMENT_INTENT ||--o{ PAYMENT_TRANSACTION : payment_intent_id
+    PAYMENT_INTENT ||--o{ REFUND : payment_intent_id
+    PAYMENT_TRANSACTION ||--o{ REFUND : transaction_id
+    PAYMENT_INTENT {
+        uuid id PK
+        uuid order_id
+        varchar provider
+        varchar provider_reference
+        decimal amount
+        varchar currency
+        varchar status
+        varchar idempotency_key
+    }
+    PAYMENT_TRANSACTION {
+        uuid id PK
+        uuid payment_intent_id FK
+        varchar type
+        decimal amount
+        varchar provider_txn_id
+        varchar status
+    }
+    REFUND {
+        uuid id PK
+        uuid payment_intent_id FK
+        uuid transaction_id FK
+        decimal amount
+        varchar reason
+        varchar status
+    }

@@ -1,0 +1,45 @@
+sequenceDiagram
+    autonumber
+    participant UI as React Web / Tauri UI
+    participant G as Axum Gateway/BFF
+    participant O as Order & Checkout
+    participant P as Pricing
+    participant I as Inventory
+    participant PM as Payment
+    participant DB as order_db + Outbox
+    participant MQ as RabbitMQ
+    participant F as Fulfillment
+    UI->>G: POST /api/v1/checkouts (Idempotency-Key)
+    G->>O: Authenticated checkout command
+    O->>P: Quote with currency, rules, tax context
+    P-->>O: Versioned price snapshot
+    O->>I: Reserve stock (TTL; idempotency key)
+    alt Out of stock
+        I-->>O: Reservation rejected
+        O-->>UI: Error / unavailable item
+    else Reserved
+        I-->>O: reservation_id + expires_at
+        O->>PM: Authorize PSP payment (idempotent)
+        alt Authorization failed
+            PM-->>O: Failed
+            O->>I: Release reservation
+            O-->>G: Failed checkout
+        else Authorized
+            PM-->>O: Authorized
+            O->>DB: Atomic order commit + outbox event
+            alt Order commit failure
+                O->>PM: Void authorization
+                O->>I: Release reservation
+            else Order committed
+                DB-->>O: order_id
+                O-->>G: 202 checkout processing / order status
+                G-->>UI: checkout_id + status
+                DB->>MQ: Publisher emits order.confirmed.v1
+                MQ-->>F: Idempotent consumer
+                F->>I: Allocate / commit stock reservation
+                F->>PM: Capture on business policy
+                F-->>MQ: Shipment / fulfillment events
+            end
+        end
+    end
+    Note over O,PM: Saga state + retry + compensations; PSP webhooks deduplicated

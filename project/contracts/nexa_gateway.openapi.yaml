@@ -1,0 +1,193 @@
+openapi: 3.0.3
+info:
+  title: Nexa Commerce Gateway API (Draft)
+  version: 0.1.0
+  description: Draft only. Endpoints require full auth/authorization, validation and integration before production.
+servers:
+  - url: https://api.example.com
+security:
+  - sessionCookie: []
+  - bearerAuth: []
+paths:
+  /api/v1/catalog/products:
+    get:
+      summary: List public product metadata
+      operationId: listProducts
+      security: []
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: Page of product metadata without price and stock
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Product'}
+        '400':
+          description: Limit must be an integer between 1 and 100
+  /api/v1/catalog/products/{productId}:
+    get:
+      summary: Read active product metadata
+      operationId: getProduct
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Product metadata
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Product'}
+        '400':
+          description: Product ID must be a UUID
+        '404':
+          description: No active product found with this ID
+  /api/v1/carts/{cartId}:
+    get:
+      summary: Read owned cart
+      parameters:
+        - $ref: '#/components/parameters/CartId'
+      responses:
+        '200':
+          description: Current cart
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Cart'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/carts/{cartId}/items:
+    post:
+      summary: Add item to owned cart
+      parameters:
+        - $ref: '#/components/parameters/CartId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AddCartItem'}
+      responses:
+        '200':
+          description: Updated cart
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Cart'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/checkouts:
+    post:
+      summary: Create checkout Saga with idempotency
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, minLength: 12, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateCheckout'}
+      responses:
+        '202':
+          description: Checkout accepted for processing
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CheckoutStatus'}
+        '409':
+          description: Conflicting idempotency request or cart version
+  /api/v1/checkouts/{checkoutId}:
+    get:
+      summary: Poll Saga status
+      parameters:
+        - $ref: '#/components/parameters/CheckoutId'
+      responses:
+        '200':
+          description: Current state
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CheckoutStatus'}
+  /api/v1/orders/{orderId}:
+    get:
+      summary: Read order with authorization check
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order snapshot
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-nexa_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ProductId: {in: path, name: productId, required: true, schema: {type: string, format: uuid}}
+    CartId: {in: path, name: cartId, required: true, schema: {type: string, format: uuid}}
+    CheckoutId: {in: path, name: checkoutId, required: true, schema: {type: string, format: uuid}}
+    OrderId: {in: path, name: orderId, required: true, schema: {type: string, format: uuid}}
+  responses:
+    NotFound: {description: Resource not found}
+    Forbidden: {description: Not authorized for this resource}
+  schemas:
+    Product:
+      type: object
+      required: [id, sku, title, status]
+      properties:
+        id: {type: string, format: uuid}
+        sku: {type: string}
+        title: {type: string}
+        status: {type: string, enum: [draft, active, archived]}
+    Cart:
+      type: object
+      required: [id, items, version]
+      properties:
+        id: {type: string, format: uuid}
+        version: {type: integer, format: int64}
+        items:
+          type: array
+          items:
+            type: object
+            required: [product_id, quantity]
+            properties:
+              product_id: {type: string, format: uuid}
+              quantity: {type: integer, minimum: 1}
+    AddCartItem:
+      type: object
+      required: [product_id, quantity]
+      properties:
+        product_id: {type: string, format: uuid}
+        quantity: {type: integer, minimum: 1, maximum: 9999}
+    CreateCheckout:
+      type: object
+      required: [cart_id, cart_version, payment_method_token]
+      properties:
+        cart_id: {type: string, format: uuid}
+        cart_version: {type: integer, format: int64}
+        shipping_address_id: {type: string, format: uuid}
+        payment_method_token: {type: string, description: PSP token only; never raw card data}
+    CheckoutStatus:
+      type: object
+      required: [id, status]
+      properties:
+        id: {type: string, format: uuid}
+        status:
+          type: string
+          enum: [created, pricing, reserved, authorizing, confirmed, failed, compensating]
+        order_id: {type: string, format: uuid, nullable: true}
+        failure_reason_code: {type: string, nullable: true}
+    Order:
+      type: object
+      required: [id, status, currency, total_minor]
+      properties:
+        id: {type: string, format: uuid}
+        status: {type: string}
+        currency: {type: string, minLength: 3, maxLength: 3, example: THB}
+        total_minor: {type: string, pattern: '^[0-9]+$', description: Integer minor units as string to preserve precision}

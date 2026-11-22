@@ -1,0 +1,9 @@
+{
+  "name": "nexa-commerce-starter",
+  "private": true,
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "dev:web": "pnpm --filter @nexa/storefront-web dev",
+    "dev:desktop": "pnpm --filter @nexa/desktop tauri dev"
+  }
+}

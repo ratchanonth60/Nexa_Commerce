@@ -1,0 +1,9 @@
+﻿service,database,owned_tables,external_ids_not_foreign_keys
+Customer,customer_db,"customer, customer_address",customer_id in other services
+Catalog,catalog_db,"product, product_class, category, product_image, product_attribute","product_id, sku as external references"
+Pricing & Promotion,pricing_db,"price, promotion, voucher, voucher_redemption","product_id, order_id, customer_id external"
+Inventory,inventory_db,"partner, warehouse, stock_record, stock_reservation, stock_movement","product_id, order_id external"
+Cart,cart_db,"cart, cart_item","customer_id, product_id external"
+Order & Checkout,order_db,"checkout_session, orders, order_item, order_discount, order_address, order_status_history","cart_id, customer_id, product_id external"
+Payment,payment_db,"payment_intent, payment_transaction, refund",order_id external
+Fulfillment,fulfillment_db,"shipment, shipment_item, shipment_event","order_id, order_item_id, warehouse_id external"

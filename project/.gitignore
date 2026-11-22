@@ -1,0 +1,5 @@
+node_modules/
+target/
+dist/
+.env
+apps/desktop/src-tauri/gen/

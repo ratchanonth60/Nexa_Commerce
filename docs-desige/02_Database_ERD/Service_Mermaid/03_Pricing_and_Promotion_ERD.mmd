@@ -1,0 +1,34 @@
+%% Nexa Commerce / Pricing & Promotion (pricing_db)
+erDiagram
+    PROMOTION ||--o{ VOUCHER : promotion_id
+    VOUCHER ||--o{ VOUCHER_REDEMPTION : voucher_id
+    PRICE {
+        uuid id PK
+        uuid product_id
+        varchar channel
+        varchar currency
+        decimal amount
+        datetime valid_from
+        datetime valid_to
+    }
+    PROMOTION {
+        uuid id PK
+        varchar name
+        json rule_json
+        json discount_json
+        varchar status
+    }
+    VOUCHER {
+        uuid id PK
+        uuid promotion_id FK
+        varchar code
+        int usage_limit
+        datetime valid_until
+    }
+    VOUCHER_REDEMPTION {
+        uuid id PK
+        uuid voucher_id FK
+        uuid order_id
+        uuid customer_id
+        datetime redeemed_at
+    }

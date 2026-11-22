@@ -1,0 +1,304 @@
+// Nexa Commerce | Microservices logical database model
+// Inspired by Django Oscar business concepts; not a physical or verbatim Oscar schema
+// Each schema represents a separate PostgreSQL database; visual grouping in DBML is illustrative.
+// No physical FK exists between databases. *_id marked external is an opaque reference.
+// Recommended types: UUID v7 where supported, numeric for money, timestamptz for time.
+
+// ========== Customer / customer_db ==========
+Table customer_db.customer {
+  id uuid [pk, not null]
+  oidc_subject varchar [unique, not null]
+  email varchar [not null]
+  status varchar [not null]
+  created_at timestamptz [not null]
+}
+
+Table customer_db.customer_address {
+  id uuid [pk, not null]
+  customer_id uuid [not null]
+  name varchar [not null]
+  line1 varchar [not null]
+  city varchar [not null]
+  postcode varchar [not null]
+  country_code char(2) [not null]
+  is_default boolean [not null]
+}
+
+// ========== Catalog / catalog_db ==========
+Table catalog_db.product_class {
+  id uuid [pk, not null]
+  code varchar [unique, not null]
+  name varchar [not null]
+}
+
+Table catalog_db.product {
+  id uuid [pk, not null]
+  product_class_id uuid [not null]
+  parent_id uuid
+  sku varchar [unique, not null]
+  title varchar [not null]
+  status varchar [not null]
+}
+
+Table catalog_db.category {
+  id uuid [pk, not null]
+  parent_id uuid
+  name varchar [not null]
+  slug varchar [not null]
+}
+
+Table catalog_db.product_category {
+  product_id uuid [pk, not null]
+  category_id uuid [pk, not null]
+}
+
+Table catalog_db.product_attribute {
+  id uuid [pk, not null]
+  product_class_id uuid [not null]
+  code varchar [not null]
+  data_type varchar [not null]
+}
+
+Table catalog_db.attribute_value {
+  id uuid [pk, not null]
+  product_id uuid [not null]
+  attribute_id uuid [not null]
+  value_json jsonb [not null]
+}
+
+Table catalog_db.product_image {
+  id uuid [pk, not null]
+  product_id uuid [not null]
+  image_url text [not null]
+  sort_order int [not null]
+}
+
+// ========== Pricing & Promotion / pricing_db ==========
+Table pricing_db.price {
+  id uuid [pk, not null]
+  product_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  channel varchar [not null]
+  currency char(3) [not null]
+  amount numeric(12,2) [not null]
+  valid_from timestamptz [not null]
+  valid_to timestamptz [not null]
+}
+
+Table pricing_db.promotion {
+  id uuid [pk, not null]
+  name varchar [not null]
+  rule_json jsonb [not null]
+  discount_json jsonb [not null]
+  status varchar [not null]
+}
+
+Table pricing_db.voucher {
+  id uuid [pk, not null]
+  promotion_id uuid [not null]
+  code varchar [unique, not null]
+  usage_limit int [not null]
+  valid_until timestamptz [not null]
+}
+
+Table pricing_db.voucher_redemption {
+  id uuid [pk, not null]
+  voucher_id uuid [not null]
+  order_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  customer_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  redeemed_at timestamptz [not null]
+}
+
+// ========== Inventory / inventory_db ==========
+Table inventory_db.partner {
+  id uuid [pk, not null]
+  code varchar [unique, not null]
+  name varchar [not null]
+}
+
+Table inventory_db.warehouse {
+  id uuid [pk, not null]
+  partner_id uuid [not null]
+  code varchar [unique, not null]
+  name varchar [not null]
+}
+
+Table inventory_db.stock_record {
+  id uuid [pk, not null]
+  warehouse_id uuid [not null]
+  product_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  partner_sku varchar [not null]
+  on_hand int [not null]
+  reserved int [not null]
+  allocated int [not null]
+  version int [not null]
+}
+
+Table inventory_db.stock_reservation {
+  id uuid [pk, not null]
+  stock_record_id uuid [not null]
+  order_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  quantity int [not null]
+  status varchar [not null]
+  expires_at timestamptz [not null]
+}
+
+Table inventory_db.stock_movement {
+  id uuid [pk, not null]
+  stock_record_id uuid [not null]
+  reservation_id uuid
+  delta int [not null]
+  reason varchar [not null]
+  created_at timestamptz [not null]
+}
+
+// ========== Cart / cart_db ==========
+Table cart_db.cart {
+  id uuid [pk, not null]
+  customer_id uuid [note: "logical cross-service ID; no database FK"]
+  session_key varchar
+  status varchar [not null]
+  updated_at timestamptz [not null]
+}
+
+Table cart_db.cart_item {
+  id uuid [pk, not null]
+  cart_id uuid [not null]
+  product_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  quantity int [not null]
+  selected_options jsonb [not null]
+}
+
+// ========== Order & Checkout / order_db ==========
+Table order_db.checkout_session {
+  id uuid [pk, not null]
+  cart_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  customer_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  idempotency_key varchar [unique, not null]
+  state varchar [not null]
+  expires_at timestamptz [not null]
+}
+
+Table order_db.orders {
+  id uuid [pk, not null]
+  checkout_id uuid [not null]
+  order_number varchar [unique, not null]
+  customer_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  currency char(3) [not null]
+  grand_total numeric(12,2) [not null]
+  status varchar [not null]
+}
+
+Table order_db.order_item {
+  id uuid [pk, not null]
+  order_id uuid [not null]
+  product_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  sku_snapshot varchar [not null]
+  title_snapshot varchar [not null]
+  quantity int [not null]
+  unit_price numeric(12,2) [not null]
+  tax_amount numeric(12,2) [not null]
+}
+
+Table order_db.order_address {
+  id uuid [pk, not null]
+  order_id uuid [not null]
+  address_type varchar [not null]
+  snapshot_json jsonb [not null]
+}
+
+Table order_db.order_discount {
+  id uuid [pk, not null]
+  order_id uuid [not null]
+  voucher_code varchar
+  amount numeric(12,2) [not null]
+}
+
+Table order_db.order_status_history {
+  id uuid [pk, not null]
+  order_id uuid [not null]
+  status varchar [not null]
+  changed_at timestamptz [not null]
+}
+
+// ========== Payment / payment_db ==========
+Table payment_db.payment_intent {
+  id uuid [pk, not null]
+  order_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  provider varchar [not null]
+  provider_reference varchar [not null]
+  amount numeric(12,2) [not null]
+  currency char(3) [not null]
+  status varchar [not null]
+  idempotency_key varchar [unique, not null]
+}
+
+Table payment_db.payment_transaction {
+  id uuid [pk, not null]
+  payment_intent_id uuid [not null]
+  type varchar [not null]
+  amount numeric(12,2) [not null]
+  provider_txn_id varchar [unique, not null]
+  status varchar [not null]
+}
+
+Table payment_db.refund {
+  id uuid [pk, not null]
+  payment_intent_id uuid [not null]
+  transaction_id uuid
+  amount numeric(12,2) [not null]
+  reason varchar [not null]
+  status varchar [not null]
+}
+
+// ========== Fulfillment / fulfillment_db ==========
+Table fulfillment_db.shipment {
+  id uuid [pk, not null]
+  order_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  warehouse_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  carrier varchar [not null]
+  tracking_number varchar [not null]
+  status varchar [not null]
+}
+
+Table fulfillment_db.shipment_item {
+  id uuid [pk, not null]
+  shipment_id uuid [not null]
+  order_item_id uuid [not null, note: "logical cross-service ID; no database FK"]
+  quantity int [not null]
+}
+
+Table fulfillment_db.shipment_event {
+  id uuid [pk, not null]
+  shipment_id uuid [not null]
+  event_code varchar [not null]
+  event_time timestamptz [not null]
+}
+
+Ref: customer_db.customer.id < customer_db.customer_address.customer_id
+Ref: catalog_db.product_class.id < catalog_db.product.product_class_id
+Ref: catalog_db.product.id < catalog_db.product.parent_id
+Ref: catalog_db.category.id < catalog_db.category.parent_id
+Ref: catalog_db.product.id < catalog_db.product_category.product_id
+Ref: catalog_db.category.id < catalog_db.product_category.category_id
+Ref: catalog_db.product_class.id < catalog_db.product_attribute.product_class_id
+Ref: catalog_db.product.id < catalog_db.attribute_value.product_id
+Ref: catalog_db.product_attribute.id < catalog_db.attribute_value.attribute_id
+Ref: catalog_db.product.id < catalog_db.product_image.product_id
+Ref: pricing_db.promotion.id < pricing_db.voucher.promotion_id
+Ref: pricing_db.voucher.id < pricing_db.voucher_redemption.voucher_id
+Ref: inventory_db.partner.id < inventory_db.warehouse.partner_id
+Ref: inventory_db.warehouse.id < inventory_db.stock_record.warehouse_id
+Ref: inventory_db.stock_record.id < inventory_db.stock_reservation.stock_record_id
+Ref: inventory_db.stock_record.id < inventory_db.stock_movement.stock_record_id
+Ref: inventory_db.stock_reservation.id < inventory_db.stock_movement.reservation_id
+Ref: cart_db.cart.id < cart_db.cart_item.cart_id
+Ref: order_db.checkout_session.id < order_db.orders.checkout_id
+Ref: order_db.orders.id < order_db.order_item.order_id
+Ref: order_db.orders.id < order_db.order_address.order_id
+Ref: order_db.orders.id < order_db.order_discount.order_id
+Ref: order_db.orders.id < order_db.order_status_history.order_id
+Ref: payment_db.payment_intent.id < payment_db.payment_transaction.payment_intent_id
+Ref: payment_db.payment_intent.id < payment_db.refund.payment_intent_id
+Ref: payment_db.payment_transaction.id < payment_db.refund.transaction_id
+Ref: fulfillment_db.shipment.id < fulfillment_db.shipment_item.shipment_id
+Ref: fulfillment_db.shipment.id < fulfillment_db.shipment_event.shipment_id
