@@ -72,6 +72,40 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+  order-postgres:
+    profiles: [checkout]
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexa
+      POSTGRES_PASSWORD: nexa_dev_only
+      POSTGRES_DB: order_db
+    ports:
+      - '127.0.0.1:5436:5432'
+    volumes:
+      - nexa_order_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexa -d order_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  payment-postgres:
+    profiles: [checkout]
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexa
+      POSTGRES_PASSWORD: nexa_dev_only
+      POSTGRES_DB: payment_db
+    ports:
+      - '127.0.0.1:5437:5432'
+    volumes:
+      - nexa_payment_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexa -d payment_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   rabbitmq:
     image: rabbitmq:4-management-alpine
     ports:
@@ -87,3 +121,5 @@ volumes:
   nexa_pricing_pgdata:
   nexa_inventory_pgdata:
   nexa_cart_pgdata:
+  nexa_order_pgdata:
+  nexa_payment_pgdata:

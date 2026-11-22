@@ -121,3 +121,34 @@ app receives the authorization code at `http://127.0.0.1:17842/oidc/callback`.
 Use that exact URI when registering another public desktop client with PKCE.
 The app holds the short-lived access token in Rust memory. Closing the app,
 signing out, or reaching token expiry ends the desktop session.
+
+## Local checkout sandbox
+
+Start the Order and Payment databases alongside the four commerce databases.
+
+```bash
+docker compose -f infra/compose.yaml --profile checkout up -d --wait order-postgres payment-postgres
+export CHECKOUT_SANDBOX=true
+export ORDER_DATABASE_URL=postgres://nexa:nexa_dev_only@127.0.0.1:5436/order_db
+export PAYMENT_DATABASE_URL=postgres://nexa:nexa_dev_only@127.0.0.1:5437/payment_db
+```
+
+Restart the gateway with those variables. Use an authenticated cart with a
+current version and post to `/api/v1/checkouts`. Supply an `Idempotency-Key`
+header of 12–128 letters, digits, dots, dashes, or underscores, and this payload.
+
+```json
+{
+  "cart_id": "<owned-cart-uuid>",
+  "cart_version": 1,
+  "payment_method_token": "sandbox_approve"
+}
+```
+
+Poll `GET /api/v1/checkouts/{checkoutId}` until `confirmed` or `failed`.
+Use `GET /api/v1/orders/{orderId}` to read a confirmed order. A retry with the
+same key and payload returns the original checkout. A confirmed cart must be
+replaced with a new cart for a new order. Use `sandbox_decline` to exercise the
+payment failure path and release stock. The local simulator takes these two
+test tokens and omits shipping addresses. Confirmed orders and outbox records
+are written together. The sandbox stores no card details.

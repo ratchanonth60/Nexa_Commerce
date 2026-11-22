@@ -129,6 +129,25 @@ async fn load_cart<'e>(
     cart_id: Uuid,
     customer: &Customer,
 ) -> Result<Cart, StatusCode> {
+    let (version, items) = checkout_snapshot(db, cart_id, customer).await?;
+    Ok(Cart {
+        id: cart_id.to_string(),
+        version,
+        items: items
+            .into_iter()
+            .map(|(product_id, quantity)| CartItem {
+                product_id: product_id.to_string(),
+                quantity,
+            })
+            .collect(),
+    })
+}
+
+pub(crate) async fn checkout_snapshot<'e>(
+    db: impl PgExecutor<'e>,
+    cart_id: Uuid,
+    customer: &Customer,
+) -> Result<(i64, Vec<(Uuid, i32)>), StatusCode> {
     // Read the version and items in one statement so they share a database snapshot.
     let rows = sqlx::query_as::<_, (i64, Option<Uuid>, Option<i32>)>(
         "SELECT cart.version, cart_item.product_id, cart_item.quantity
@@ -147,23 +166,10 @@ async fn load_cart<'e>(
     let version = rows.first().ok_or(StatusCode::FORBIDDEN)?.0;
     let items = rows
         .into_iter()
-        .filter_map(|(_, product_id, quantity)| {
-            product_id
-                .zip(quantity)
-                .map(|(product_id, quantity)| CartItem {
-                    product_id: product_id.to_string(),
-                    quantity,
-                })
-        })
+        .filter_map(|(_, product_id, quantity)| product_id.zip(quantity))
         .collect();
-
-    Ok(Cart {
-        id: cart_id.to_string(),
-        version,
-        items,
-    })
+    Ok((version, items))
 }
-
 fn cart_query_error(err: sqlx::Error) -> StatusCode {
     error!(error = %err, "cart query failed");
     StatusCode::INTERNAL_SERVER_ERROR

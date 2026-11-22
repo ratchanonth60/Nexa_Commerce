@@ -55,7 +55,32 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U nexa -d cart_db"
           --health-interval 5s --health-timeout 3s --health-retries 10
+      order-postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nexa
+          POSTGRES_PASSWORD: nexa_dev_only
+          POSTGRES_DB: order_db
+        ports:
+          - 5436:5432
+        options: >-
+          --health-cmd "pg_isready -U nexa -d order_db"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      payment-postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nexa
+          POSTGRES_PASSWORD: nexa_dev_only
+          POSTGRES_DB: payment_db
+        ports:
+          - 5437:5432
+        options: >-
+          --health-cmd "pg_isready -U nexa -d payment_db"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     env:
+      CHECKOUT_SANDBOX: 'true'
+      ORDER_DATABASE_URL: postgres://nexa:nexa_dev_only@127.0.0.1:5436/order_db
+      PAYMENT_DATABASE_URL: postgres://nexa:nexa_dev_only@127.0.0.1:5437/payment_db
       CART_DATABASE_URL: postgres://nexa:nexa_dev_only@127.0.0.1:5435/cart_db
       INVENTORY_DATABASE_URL: postgres://nexa:nexa_dev_only@127.0.0.1:5434/inventory_db
       PRICING_DATABASE_URL: postgres://nexa:nexa_dev_only@127.0.0.1:5433/pricing_db
@@ -64,6 +89,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: cargo fmt --check
       - run: cargo test --locked
+      - run: cargo test --locked -- --ignored
       - run: cargo build --locked
       - name: Check commerce API against seeded PostgreSQL
         run: |
@@ -96,6 +122,9 @@ jobs:
             jq -e '. == {id: "019b0000-0000-7000-8000-000000000002", sku: "DEMO-MUG", title: "Nexa Demo Mug", status: "active"}'
           status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "${product_url%/*}/00000000-0000-0000-0000-000000000000")
           test "$status" = 404
+          python3 services/catalog-service/tests/checkout_smoke.py "$cart_keys/key.pem"
+          docker exec "${{ job.services.order-postgres.id }}" psql -v ON_ERROR_STOP=1 -U nexa -d order_db -At \
+            -c "SELECT count(*) FROM order_outbox WHERE event_type = 'order.confirmed.v1'" | grep -x 1
           docker exec "${{ job.services.postgres.id }}" psql -v ON_ERROR_STOP=1 -U nexa -d catalog_db \
             -c "UPDATE product SET status = 'archived' WHERE sku = 'DEMO-MUG'"
           status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$product_url")

@@ -1,7 +1,9 @@
 // Development gateway for Catalog, Pricing, Inventory and Cart.
 mod auth;
 mod cart;
+mod checkout;
 mod inventory;
+mod payment;
 mod pricing;
 mod web_session;
 
@@ -23,6 +25,7 @@ struct AppState {
     pricing_db: PgPool,
     inventory_db: PgPool,
     cart_db: PgPool,
+    checkout: Option<checkout::CheckoutDatabases>,
     access_tokens: Option<auth::AccessTokens>,
     web_sessions: Option<std::sync::Arc<web_session::WebSessions>>,
 }
@@ -103,6 +106,9 @@ fn commerce_app(state: AppState) -> Router {
                 .route("/api/v1/carts", post(cart::create_cart))
                 .route("/api/v1/carts/{cartId}", get(cart::read_cart))
                 .route("/api/v1/carts/{cartId}/items", post(cart::add_item))
+                .route("/api/v1/checkouts", post(checkout::create))
+                .route("/api/v1/checkouts/{checkoutId}", get(checkout::status))
+                .route("/api/v1/orders/{orderId}", get(checkout::order))
                 .route("/auth/login", get(web_session::login))
                 .route("/auth/callback", get(web_session::callback))
                 .route("/auth/session", get(web_session::session))
@@ -149,11 +155,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let access_tokens = auth::AccessTokens::from_env()?;
     let web_sessions = web_session::WebSessions::from_env(access_tokens.as_ref())?;
 
+    let checkout = checkout::CheckoutDatabases::from_env().await?;
+    if let Some(databases) = checkout.clone() {
+        tokio::spawn(checkout::run(databases, inventory_db.clone()));
+    }
+
     let app = commerce_app(AppState {
         db,
         pricing_db,
         inventory_db,
         cart_db,
+        checkout,
         access_tokens,
         web_sessions,
     });
@@ -179,6 +191,7 @@ mod tests {
             pricing_db: db.clone(),
             inventory_db: db.clone(),
             cart_db: db,
+            checkout: None,
             access_tokens: None,
             web_sessions: None,
         })
