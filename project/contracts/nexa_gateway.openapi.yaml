@@ -4,7 +4,10 @@ info:
   version: 0.1.0
   description: Draft only. Endpoints require full auth/authorization, validation and integration before production.
 servers:
+  - url: /
+    description: Current gateway origin
   - url: https://api.example.com
+    description: Hosted gateway placeholder
 security:
   - sessionCookie: []
   - bearerAuth: []

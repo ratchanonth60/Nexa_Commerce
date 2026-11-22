@@ -4,7 +4,7 @@
 
 ## คำตอบการออกแบบหลัก
 
-- **Rust backend**: Axum + Tokio + SQLx + PostgreSQL, 8 domain services ตาม ERD เดิม
+- **Rust backend**: Axum + Tokio + Diesel + PostgreSQL, 8 domain services ตาม ERD เดิม
 - **Web app**: React + TypeScript + Vite สำหรับ Storefront / Admin UI
 - **Desktop app**: Tauri 2 + Rust + React + TypeScript สำหรับ Backoffice / POS-style workstations (สมมติฐานที่ปรับได้)
 - **Shared frontend**: Packages `ui`, `contracts`, `api-client`; ไม่ให้ Web app ใช้ `invoke()` โดยตรง
@@ -49,5 +49,5 @@
 - Tauri CSP: https://v2.tauri.app/security/csp/
 - Native app OAuth RFC 8252: https://www.rfc-editor.org/rfc/rfc8252
 - Axum: https://docs.rs/axum/latest/axum/
-- SQLx: https://docs.rs/sqlx/latest/sqlx/
+- Diesel: https://diesel.rs/
 - OpenTelemetry Rust: https://opentelemetry.io/docs/languages/rust/

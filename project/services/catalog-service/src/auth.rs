@@ -32,7 +32,7 @@ struct Claims {
 }
 
 impl AccessTokens {
-    pub(crate) fn from_env() -> Result<Option<Self>, Box<dyn std::error::Error>> {
+    pub(crate) fn from_env() -> Result<Option<Self>, Box<dyn std::error::Error + Send + Sync>> {
         let keycloak_access_tokens = match env::var("OIDC_KEYCLOAK_ACCESS_TOKENS").as_deref() {
             Err(env::VarError::NotPresent) | Ok("false") => false,
             Ok("true") => true,

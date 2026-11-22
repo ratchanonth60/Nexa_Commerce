@@ -2,6 +2,8 @@
 mod auth;
 mod cart;
 mod checkout;
+mod db;
+mod docs;
 mod fulfillment;
 mod inventory;
 mod metrics;
@@ -18,10 +20,17 @@ use axum::{
     routing::{get, post},
     Extension, Json, Router,
 };
+use db::{DbMigrations, Error as DbError, PgPool};
+use diesel::{
+    sql_query,
+    sql_types::{BigInt, Text, Uuid as SqlUuid},
+    OptionalExtension, QueryableByName,
+};
+use diesel_async::RunQueryDsl;
 use serde::{Deserialize, Serialize};
-use sqlx::{types::Uuid, FromRow, PgPool};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::{error, info};
+use uuid::Uuid;
 
 #[derive(Clone)]
 struct AppState {
@@ -35,11 +44,15 @@ struct AppState {
     web_sessions: Option<std::sync::Arc<web_session::WebSessions>>,
 }
 
-#[derive(Serialize, FromRow)]
+#[derive(Serialize, QueryableByName)]
 struct ProductDto {
+    #[diesel(sql_type = Text)]
     id: String,
+    #[diesel(sql_type = Text)]
     sku: String,
+    #[diesel(sql_type = Text)]
     title: String,
+    #[diesel(sql_type = Text)]
     status: String,
 }
 
@@ -67,7 +80,7 @@ async fn readiness(State(state): State<AppState>) -> Result<&'static str, Status
         if let Some(fulfillment) = &state.fulfillment {
             ping(fulfillment).await?;
         }
-        Ok::<_, sqlx::Error>(())
+        Ok::<_, DbError>(())
     };
     match tokio::time::timeout(std::time::Duration::from_secs(1), check).await {
         Ok(Ok(())) => Ok("ready"),
@@ -75,8 +88,11 @@ async fn readiness(State(state): State<AppState>) -> Result<&'static str, Status
     }
 }
 
-async fn ping(pool: &PgPool) -> Result<(), sqlx::Error> {
-    sqlx::query("SELECT 1").execute(pool).await.map(|_| ())
+async fn ping(pool: &PgPool) -> Result<(), DbError> {
+    sql_query("SELECT 1")
+        .execute(&mut db::connection(pool).await?)
+        .await?;
+    Ok(())
 }
 
 async fn list_products(
@@ -87,13 +103,16 @@ async fn list_products(
     if !(1..=100).contains(&limit) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let products = sqlx::query_as::<_, ProductDto>(
+    let mut conn = db::connection(&state.db)
+        .await
+        .map_err(catalog_query_error)?;
+    let products = sql_query(
         "SELECT id::text AS id, sku, title, status FROM product WHERE status = 'active' ORDER BY title, id LIMIT $1"
     )
-    .bind(limit)
-    .fetch_all(&state.db)
+    .bind::<BigInt, _>(limit)
+    .load::<ProductDto>(&mut conn)
     .await
-    .map_err(catalog_query_error)?;
+    .map_err(|err| catalog_query_error(err.into()))?;
     Ok(Json(products))
 }
 
@@ -102,18 +121,22 @@ async fn get_product(
     Path(product_id): Path<String>,
 ) -> Result<Json<ProductDto>, StatusCode> {
     let product_id = Uuid::parse_str(&product_id).map_err(|_| StatusCode::BAD_REQUEST)?;
-    sqlx::query_as::<_, ProductDto>(
+    let mut conn = db::connection(&state.db)
+        .await
+        .map_err(catalog_query_error)?;
+    sql_query(
         "SELECT id::text AS id, sku, title, status FROM product WHERE id = $1 AND status = 'active'",
     )
-    .bind(product_id)
-    .fetch_optional(&state.db)
+    .bind::<SqlUuid, _>(product_id)
+    .get_result::<ProductDto>(&mut conn)
     .await
-    .map_err(catalog_query_error)?
+    .optional()
+    .map_err(|err| catalog_query_error(err.into()))?
     .map(Json)
     .ok_or(StatusCode::NOT_FOUND)
 }
 
-fn catalog_query_error(err: sqlx::Error) -> StatusCode {
+fn catalog_query_error(err: DbError) -> StatusCode {
     error!(error = %err, "catalog query failed");
     StatusCode::INTERNAL_SERVER_ERROR
 }
@@ -179,32 +202,29 @@ fn commerce_app(state: AppState) -> Router {
         .layer(middleware::from_fn(metrics::record))
         .layer(Extension(metrics::Metrics::default()))
         .with_state(state)
+        .merge(docs::routes())
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
-    let database_url = std::env::var("DATABASE_URL")?;
-    let db = PgPool::connect(&database_url).await?;
-    sqlx::migrate!().run(&db).await?;
-
-    let pricing_db = PgPool::connect(&std::env::var("PRICING_DATABASE_URL")?).await?;
-    sqlx::migrate!("./pricing-migrations")
-        .run(&pricing_db)
-        .await?;
-
-    let inventory_db = PgPool::connect(&std::env::var("INVENTORY_DATABASE_URL")?).await?;
-    sqlx::migrate!("./inventory-migrations")
-        .run(&inventory_db)
-        .await?;
-
-    let cart_db = PgPool::connect(&std::env::var("CART_DATABASE_URL")?).await?;
-    sqlx::migrate!("./cart-migrations").run(&cart_db).await?;
+    let db = db::connect(&std::env::var("DATABASE_URL")?, DbMigrations::Catalog).await?;
+    let pricing_db = db::connect(
+        &std::env::var("PRICING_DATABASE_URL")?,
+        DbMigrations::Pricing,
+    )
+    .await?;
+    let inventory_db = db::connect(
+        &std::env::var("INVENTORY_DATABASE_URL")?,
+        DbMigrations::Inventory,
+    )
+    .await?;
+    let cart_db = db::connect(&std::env::var("CART_DATABASE_URL")?, DbMigrations::Cart).await?;
     let access_tokens = auth::AccessTokens::from_env()?;
     let web_sessions = web_session::WebSessions::from_env(access_tokens.as_ref())?;
 
@@ -213,8 +233,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let order = checkout
             .as_ref()
             .ok_or("fulfillment requires checkout database configuration")?;
-        let db = PgPool::connect(&url).await?;
-        sqlx::migrate!("./fulfillment-migrations").run(&db).await?;
+        let db = db::connect(&url, DbMigrations::Fulfillment).await?;
         tokio::spawn(operations::deliver_orders(
             order.order_pool().clone(),
             db.clone(),
@@ -254,7 +273,7 @@ mod tests {
     use tower::ServiceExt;
 
     fn test_app() -> Router {
-        let db = PgPool::connect_lazy("postgres://localhost/catalog_db").unwrap();
+        let db = db::lazy_test_pool();
         commerce_app(AppState {
             db: db.clone(),
             pricing_db: db.clone(),

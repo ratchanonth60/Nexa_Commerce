@@ -5,12 +5,19 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use diesel::{
+    sql_query,
+    sql_types::{Bool, Text, Uuid as SqlUuid},
+    OptionalExtension, QueryableByName,
+};
+use diesel_async::{AsyncConnection, RunQueryDsl};
 use serde::Deserialize;
-use sqlx::{types::Uuid, PgPool};
 use tracing::error;
+use uuid::Uuid;
 
 use crate::{
     auth::Customer,
+    db::{connection, Error, PgPool},
     fulfillment::{self, Shipment, ShipmentNotification, ShipmentStatus},
     inventory, AppState,
 };
@@ -49,19 +56,27 @@ async fn require_order_owner(
         .checkout
         .as_ref()
         .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
-    let owns_order = sqlx::query_scalar::<_, bool>(
+    #[derive(QueryableByName)]
+    struct Ownership {
+        #[diesel(sql_type = Bool)]
+        owns_order: bool,
+    }
+    let mut conn = connection(order.order_pool())
+        .await
+        .map_err(operation_error)?;
+    let ownership = sql_query(
         "SELECT EXISTS (
             SELECT 1 FROM checkout c JOIN order_customer owner ON owner.id = c.customer_id
             WHERE c.id = $1 AND c.status = 'confirmed' AND owner.issuer = $2 AND owner.subject = $3
-         )",
+         ) AS owns_order",
     )
-    .bind(order_id)
-    .bind(customer.issuer)
-    .bind(customer.subject)
-    .fetch_one(order.order_pool())
+    .bind::<SqlUuid, _>(order_id)
+    .bind::<Text, _>(customer.issuer)
+    .bind::<Text, _>(customer.subject)
+    .get_result::<Ownership>(&mut conn)
     .await
-    .map_err(operation_error)?;
-    if !owns_order {
+    .map_err(|err| operation_error(err.into()))?;
+    if !ownership.owns_order {
         return Err(StatusCode::FORBIDDEN);
     }
     Ok(())
@@ -161,12 +176,12 @@ pub(crate) async fn deliver_orders(order_db: PgPool, fulfillment_db: PgPool, inv
     }
 }
 
-async fn dispatch_order(fulfillment_db: &PgPool, inventory_db: &PgPool) -> Result<(), sqlx::Error> {
+async fn dispatch_order(fulfillment_db: &PgPool, inventory_db: &PgPool) -> Result<(), Error> {
     let Some(order_id) = fulfillment::next_dispatch(fulfillment_db).await? else {
         return Ok(());
     };
     if !inventory::dispatch(inventory_db, order_id).await? {
-        return Err(sqlx::Error::InvalidArgument(
+        return Err(Error::InvalidArgument(
             "shipment has no allocated inventory".into(),
         ));
     }
@@ -180,25 +195,37 @@ async fn dispatch_order(fulfillment_db: &PgPool, inventory_db: &PgPool) -> Resul
     Ok(())
 }
 
-async fn deliver_order(order_db: &PgPool, fulfillment_db: &PgPool) -> Result<(), sqlx::Error> {
-    let mut tx = order_db.begin().await?;
-    let event = sqlx::query_as::<_, (Uuid, Uuid)>(
-        "SELECT event_id, order_id FROM order_outbox WHERE fulfilled_at IS NULL
-         ORDER BY occurred_at, event_id LIMIT 1 FOR UPDATE SKIP LOCKED",
-    )
-    .fetch_optional(&mut *tx)
-    .await?;
-    if let Some((event_id, order_id)) = event {
-        fulfillment::consume_order(fulfillment_db, event_id, order_id).await?;
-        sqlx::query("UPDATE order_outbox SET fulfilled_at = now() WHERE event_id = $1")
-            .bind(event_id)
-            .execute(&mut *tx)
-            .await?;
+async fn deliver_order(order_db: &PgPool, fulfillment_db: &PgPool) -> Result<(), Error> {
+    #[derive(QueryableByName)]
+    struct OrderEvent {
+        #[diesel(sql_type = SqlUuid)]
+        event_id: Uuid,
+        #[diesel(sql_type = SqlUuid)]
+        order_id: Uuid,
     }
-    tx.commit().await
+    connection(order_db)
+        .await?
+        .transaction(async |tx| {
+            let event = sql_query(
+                "SELECT event_id, order_id FROM order_outbox WHERE fulfilled_at IS NULL
+             ORDER BY occurred_at, event_id LIMIT 1 FOR UPDATE SKIP LOCKED",
+            )
+            .get_result::<OrderEvent>(tx)
+            .await
+            .optional()?;
+            if let Some(event) = event {
+                fulfillment::consume_order(fulfillment_db, event.event_id, event.order_id).await?;
+                sql_query("UPDATE order_outbox SET fulfilled_at = now() WHERE event_id = $1")
+                    .bind::<SqlUuid, _>(event.event_id)
+                    .execute(tx)
+                    .await?;
+            }
+            Ok(())
+        })
+        .await
 }
 
-fn operation_error(err: sqlx::Error) -> StatusCode {
+fn operation_error(err: Error) -> StatusCode {
     error!(error = %err, "shipment operation failed");
     StatusCode::INTERNAL_SERVER_ERROR
 }

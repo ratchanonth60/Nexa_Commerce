@@ -5,8 +5,16 @@ edition = "2021"
 
 [dependencies]
 axum = "0.8"
+diesel = { version = "~2.4.0", default-features = false, features = ["postgres_backend", "uuid"] }
+diesel-async = { version = "0.10", features = ["postgres", "bb8", "migrations"] }
+diesel_migrations = "~2.4.0"
+thiserror = "2"
+crc32fast = "1"
+tokio-postgres = "0.7"
+tokio-postgres-rustls = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["std", "ring", "tls12"] }
+rustls-native-certs = "0.8"
 tokio = { version = "1", features = ["full"] }
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "macros", "migrate"] }
 serde = { version = "1", features = ["derive"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 tracing = "0.1"
@@ -18,7 +26,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 sha2 = "0.10"
 subtle = "2"
 url = "2"
-uuid = { version = "1", features = ["serde"] }
+uuid = { version = "1", features = ["serde", "v4"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

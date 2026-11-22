@@ -2,7 +2,7 @@
 
 ## ADR-001 — Rust + Axum for HTTP service runtime
 
-Use `axum` + `tokio` and `tower-http` to implement REST/JSON APIs. Use `sqlx` for PostgreSQL access and migrations. Separate `domain`, `application`, `ports`, `adapters`, `api` in larger services; don't force a big abstraction on tiny service starters. Use `tracing` + OpenTelemetry for visibility. **No Django runtime in the target system**; Django Oscar remains legacy domain reference.
+Use `axum` + `tokio` and `tower-http` to implement REST/JSON APIs. Use `diesel-async` for pooled PostgreSQL access and Diesel migrations for schema changes. Separate `domain`, `application`, `ports`, `adapters`, `api` in larger services; don't force a big abstraction on tiny service starters. Use `tracing` + OpenTelemetry for visibility. **No Django runtime in the target system**; Django Oscar remains legacy domain reference.
 
 Alternative `actix-web` is valid; Axum chosen for simple tower ecosystem integration. Protobuf/gRPC is optional for stable high-volume interservice contracts and not needed for MVP.
 

@@ -111,7 +111,7 @@ struct SessionInfo {
 impl WebSessions {
     pub(crate) fn from_env(
         access_tokens: Option<&AccessTokens>,
-    ) -> Result<Option<Arc<Self>>, Box<dyn std::error::Error>> {
+    ) -> Result<Option<Arc<Self>>, Box<dyn std::error::Error + Send + Sync>> {
         const SETTINGS: [&str; 7] = [
             "OIDC_WEB_CLIENT_ID",
             "OIDC_WEB_CLIENT_SECRET",

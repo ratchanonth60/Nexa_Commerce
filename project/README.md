@@ -6,6 +6,24 @@ The React storefront and Tauri desktop app share a catalog and cart UI. The Rust
 
 Install Rust stable, Node 24, pnpm 10, and Docker Compose. For the desktop app, install the [Tauri v2 platform prerequisites](https://v2.tauri.app/start/prerequisites/).
 
+From the repository root, run `make help` for available commands. To start
+the local sandbox, run `make up`, then `make api-auth`, `make web`, and
+`make desktop` in separate terminals. Keycloak must finish starting before
+`make api-auth`. Use `make health` to check the gateway.
+
+`make stop` stops Compose services and `make down` removes their containers
+while retaining database volumes. Stop foreground gateway and client processes
+with Ctrl+C. `make test`, `make test-db`, `make check`, and `make build` run
+the corresponding verification commands. PostgreSQL tests need the databases
+started by `make db-up` and a database user allowed to create temporary databases.
+
+The Makefile defaults to Compose project `nexa`. To use an existing stack,
+pass its name, for example `make status COMPOSE_PROJECT_NAME=nexa-roadmap-local`.
+Override tools with `PNPM=/path/to/pnpm` or `DOCKER=/path/to/docker`.
+Optional `project/.env` overrides use Make-compatible `KEY=value` syntax.
+`make backup-drill` requires a confirmed and dispatched sandbox order.
+Adjust the load test with `make load LOAD_SECONDS=10 LOAD_WORKERS=8`.
+
 Run the following from `project/`.
 
 ```bash
@@ -34,6 +52,29 @@ Run `cargo test --locked` to check limit validation and local CORS. Run `pnpm --
 The API accepts `limit` from 1 to 100 and defaults to 20. Both clients should display **Nexa Demo Mug** followed by **Nexa Demo T-shirt**. Select either title to read its SKU and status from `GET /api/v1/catalog/products/{productId}`, then select **Back to products** to return. The [implementation roadmap](../docs-desige/06_Rust_Tauri_React_Fullstack/02_Documentation/06_Implementation_Roadmap.md) covers cart, checkout, and later phases.
 
 The [OpenAPI draft](contracts/nexa_gateway.openapi.yaml) describes catalog requests and responses. The [OrderConfirmed event schema](contracts/order.confirmed.v1.schema.json) describes the planned checkout event.
+
+## API documentation
+
+Open http://127.0.0.1:8082/docs after starting the gateway. Swagger UI loads
+the contract from `/openapi.yaml` and sends requests to the current gateway
+origin by default. Run `make docs` from the repository root to print and
+check the URL. Swagger UI assets load from jsDelivr and require internet access.
+Use **Authorize** with a valid access token for protected endpoints.
+
+## PostgreSQL migrations
+
+The gateway runs embedded Diesel migrations for each database on startup.
+When upgrading a database initialized by SQLx, the gateway checks the recorded
+versions and SHA-384 checksums, records matching versions in Diesel, then
+applies any remaining migrations. Keep the existing SQLx history and take a
+backup before upgrading. If a previous SQLx build must be restored after
+Diesel has applied schema changes, restore the corresponding pre-upgrade
+database backups first.
+
+For hosted PostgreSQL, use `sslmode=verify-full` in the database URL. The
+gateway verifies the server certificate and hostname when using TLS. It
+uses the system trust store, or reads a PEM CA bundle from the URL's
+`sslrootcert` path for a private CA.
 
 ## Pricing quotes
 

@@ -53,7 +53,7 @@ The **Nexa Commerce** target design is a new proposal adapted from the **Django 
 
 - Full-stack Architecture PNG/SVG/DOT/Mermaid
 - Shared Frontend / Desktop Transport Diagram (Web fetch vs Tauri Rust IPC)
-- Rust Axum + Tokio + SQLx Technical Decisions, Monorepo Structure
+- Rust Axum + Tokio + Diesel Technical Decisions, Monorepo Structure
 - API/OpenAPI draft + OrderConfirmed event JSON Schema
 - Tauri PKCE/OIDC, scoped capabilities, CSP, signed updater, offline strategy
 - Infrastructure, CI/CD, implementation roadmap
