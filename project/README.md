@@ -71,3 +71,53 @@ ownership and returns 403 for another customer's cart.
 
 When the verifier is unset, cart routes return 503 and public product,
 price, and availability reads are available.
+
+## Customer sign-in with local Keycloak
+
+Start the optional loopback-only identity provider from `project/`.
+
+```bash
+docker compose -f infra/compose.yaml --profile auth up -d keycloak
+export OIDC_ISSUER=http://127.0.0.1:8080/realms/nexa
+export OIDC_API_AUDIENCE=nexa-api
+export OIDC_KEYCLOAK_ACCESS_TOKENS=true
+export OIDC_PUBLIC_KEY_FILE="$(mktemp)"
+curl --fail --silent --show-error "$OIDC_ISSUER/protocol/openid-connect/certs" |
+  jq -er '.keys[] | select(.use == "sig" and .alg == "RS256") | .x5c[0]' |
+  awk 'BEGIN { print "-----BEGIN CERTIFICATE-----" } { print } END { print "-----END CERTIFICATE-----" }' |
+  openssl x509 -pubkey -noout > "$OIDC_PUBLIC_KEY_FILE"
+
+export OIDC_WEB_CLIENT_ID=nexa-web
+export OIDC_WEB_CLIENT_SECRET=nexa_local_web_only
+export OIDC_WEB_AUTHORIZATION_URL="$OIDC_ISSUER/protocol/openid-connect/auth"
+export OIDC_WEB_TOKEN_URL="$OIDC_ISSUER/protocol/openid-connect/token"
+export OIDC_WEB_ORIGIN=http://127.0.0.1:5173
+export OIDC_WEB_REDIRECT_URI="$OIDC_WEB_ORIGIN/auth/callback"
+export OIDC_WEB_ALLOW_HTTP_LOOPBACK=true
+```
+
+Start the gateway with the database variables from **Run locally** in the
+same shell. Open the storefront at `http://127.0.0.1:5173`, select **Sign in**,
+and use `nexa-buyer` / `nexa_local_buyer_only`. Select a product and choose
+**Add to cart**. The cart item count should increase. These credentials and
+the HTTP loopback settings are for local development.
+
+Vite proxies `/auth` and `/api` to the gateway. For a hosted storefront,
+route both paths through the storefront's HTTPS origin. The browser keeps
+an HttpOnly session cookie and supplies a CSRF token on writes. The Keycloak
+verifier option retains issuer, audience, signature and expiry checks and
+requires Keycloak's signed access-token type.
+
+For desktop sign-in, start Tauri in a shell with the same `OIDC_ISSUER`,
+`OIDC_API_AUDIENCE`, and `OIDC_KEYCLOAK_ACCESS_TOKENS` values.
+
+```bash
+export OIDC_DESKTOP_CLIENT_ID=nexa-desktop
+pnpm dev:desktop
+```
+
+Select **Sign in** and complete the login in the system browser. The desktop
+app receives the authorization code at `http://127.0.0.1:17842/oidc/callback`.
+Use that exact URI when registering another public desktop client with PKCE.
+The app holds the short-lived access token in Rust memory. Closing the app,
+signing out, or reaching token expiry ends the desktop session.

@@ -84,6 +84,8 @@ paths:
       operationId: createCart
       security:
         - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
       responses:
         '201':
           description: Empty cart with version zero
@@ -91,6 +93,7 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Cart'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {description: Invalid browser origin or CSRF token}
         '503': {$ref: '#/components/responses/CartUnavailable'}
   /api/v1/carts/{cartId}:
     get:
@@ -98,6 +101,7 @@ paths:
       operationId: readCart
       security:
         - bearerAuth: []
+        - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/CartId'
       responses:
@@ -116,6 +120,8 @@ paths:
       operationId: addCartItem
       security:
         - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
       parameters:
         - $ref: '#/components/parameters/CartId'
       requestBody:
@@ -185,6 +191,11 @@ components:
       type: apiKey
       in: cookie
       name: __Host-nexa_session
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: Value from GET /auth/session. Browser writes also require the storefront Origin.
     bearerAuth:
       type: http
       scheme: bearer
@@ -198,7 +209,7 @@ components:
     NotFound: {description: Resource not found}
     Forbidden: {description: Not authorized for this resource}
     Unauthorized:
-      description: Missing or invalid JWT access token
+      description: Missing, expired, or invalid access token or browser session
       headers:
         WWW-Authenticate:
           schema: {type: string, example: Bearer}

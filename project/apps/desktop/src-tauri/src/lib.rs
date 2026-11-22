@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+mod auth;
+mod cart;
+
+use auth::{get_session, sign_in, sign_out, DesktopSession};
+use cart::{add_cart_item, create_cart, get_cart};
+
 const PRODUCTS_URL: &str = "http://127.0.0.1:8082/api/v1/catalog/products";
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -115,11 +121,18 @@ async fn optional_json<T: serde::de::DeserializeOwned>(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(DesktopSession::default())
         .invoke_handler(tauri::generate_handler![
             list_products,
             get_product,
             get_price_quote,
-            get_availability
+            get_availability,
+            get_session,
+            sign_in,
+            sign_out,
+            create_cart,
+            get_cart,
+            add_cart_item
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nexa Commerce desktop");

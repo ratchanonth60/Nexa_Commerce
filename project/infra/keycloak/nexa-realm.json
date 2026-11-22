@@ -1,0 +1,73 @@
+{
+  "realm": "nexa",
+  "enabled": true,
+  "registrationAllowed": false,
+  "sslRequired": "external",
+  "accessTokenLifespan": 300,
+  "clientScopes": [
+    {
+      "name": "nexa-api",
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "Access token subject",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "config": { "access.token.claim": "true" }
+        },
+        {
+          "name": "Nexa API audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "nexa-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "nexa-web",
+      "protocol": "openid-connect",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "nexa_local_web_only",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://127.0.0.1:5173/auth/callback"],
+      "defaultClientScopes": ["nexa-api"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    },
+    {
+      "clientId": "nexa-desktop",
+      "protocol": "openid-connect",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://127.0.0.1:17842/oidc/callback"],
+      "defaultClientScopes": ["nexa-api"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "nexa-buyer",
+      "enabled": true,
+      "firstName": "Nexa",
+      "lastName": "Buyer",
+      "email": "buyer@example.test",
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "nexa_local_buyer_only", "temporary": false }
+      ]
+    }
+  ]
+}

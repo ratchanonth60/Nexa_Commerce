@@ -3,11 +3,13 @@ mod auth;
 mod cart;
 mod inventory;
 mod pricing;
+mod web_session;
 
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderValue, Method, StatusCode},
-    routing::get,
+    middleware,
+    routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -22,6 +24,7 @@ struct AppState {
     inventory_db: PgPool,
     cart_db: PgPool,
     access_tokens: Option<auth::AccessTokens>,
+    web_sessions: Option<std::sync::Arc<web_session::WebSessions>>,
 }
 
 #[derive(Serialize, FromRow)]
@@ -95,18 +98,27 @@ fn commerce_app(state: AppState) -> Router {
             "/api/v1/inventory/availability",
             get(inventory::get_availability),
         )
-        .route("/api/v1/carts", axum::routing::post(cart::create_cart))
-        .route("/api/v1/carts/{cartId}", get(cart::read_cart))
-        .route(
-            "/api/v1/carts/{cartId}/items",
-            axum::routing::post(cart::add_item),
+        .merge(
+            Router::new()
+                .route("/api/v1/carts", post(cart::create_cart))
+                .route("/api/v1/carts/{cartId}", get(cart::read_cart))
+                .route("/api/v1/carts/{cartId}/items", post(cart::add_item))
+                .route("/auth/login", get(web_session::login))
+                .route("/auth/callback", get(web_session::callback))
+                .route("/auth/session", get(web_session::session))
+                .route("/auth/logout", post(web_session::logout))
+                .route_layer(middleware::from_fn(web_session::private_response)),
         )
         .layer(
             CorsLayer::new()
                 .allow_origin(allowed_origins)
                 .allow_methods([Method::GET]),
         )
-        .layer(TraceLayer::new_for_http())
+        .layer(TraceLayer::new_for_http().make_span_with(
+            |request: &axum::extract::Request| {
+                tracing::debug_span!("request", method = %request.method(), path = %request.uri().path())
+            },
+        ))
         .with_state(state)
 }
 
@@ -135,6 +147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cart_db = PgPool::connect(&std::env::var("CART_DATABASE_URL")?).await?;
     sqlx::migrate!("./cart-migrations").run(&cart_db).await?;
     let access_tokens = auth::AccessTokens::from_env()?;
+    let web_sessions = web_session::WebSessions::from_env(access_tokens.as_ref())?;
 
     let app = commerce_app(AppState {
         db,
@@ -142,6 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         inventory_db,
         cart_db,
         access_tokens,
+        web_sessions,
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8082").await?;
     info!("catalog service listening on 127.0.0.1:8082");
@@ -166,6 +180,7 @@ mod tests {
             inventory_db: db.clone(),
             cart_db: db,
             access_tokens: None,
+            web_sessions: None,
         })
     }
 

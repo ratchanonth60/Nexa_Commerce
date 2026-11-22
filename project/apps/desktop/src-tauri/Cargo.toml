@@ -11,7 +11,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "query", "tokio"] }
+base64 = "0.22"
+jsonwebtoken = { version = "9", default-features = false }
+ring = "0.17"
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["net", "process", "sync", "time"] }
+url = { version = "2", features = ["serde"] }
 uuid = "1"

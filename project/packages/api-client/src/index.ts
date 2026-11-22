@@ -1,4 +1,4 @@
-import type { Availability, CommerceApi, PriceQuote, ProductDto } from '@nexa/contracts';
+import type { Availability, Cart, CommerceApi, CustomerApi, PriceQuote, ProductDto } from '@nexa/contracts';
 export type { CommerceApi } from '@nexa/contracts';
 // Web adapter. Production browser sessions are secured through a BFF cookie and CSRF rules.
 export function createWebApi(baseUrl: string): CommerceApi {
@@ -29,5 +29,51 @@ export function createWebApi(baseUrl: string): CommerceApi {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return (await response.json()) as PriceQuote;
     }
+  };
+}
+
+export function createWebCustomerApi(): CustomerApi {
+  let csrfToken: string | undefined;
+
+  async function write(path: string, body?: object) {
+    if (!csrfToken) throw new Error('Sign in to continue.');
+    const response = await fetch(path, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (response.status === 401) csrfToken = undefined;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response;
+  }
+
+  return {
+    async signedIn() {
+      const response = await fetch('/auth/session', { cache: 'no-store' });
+      if (response.status === 401 || response.status === 503) {
+        csrfToken = undefined;
+        return false;
+      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const session: { csrf_token: string } = await response.json();
+      csrfToken = session.csrf_token;
+      return true;
+    },
+    async signIn() {
+      window.location.assign('/auth/login');
+    },
+    async signOut() {
+      await write('/auth/logout');
+      csrfToken = undefined;
+    },
+    async createCart() {
+      return (await (await write('/api/v1/carts')).json()) as Cart;
+    },
+    async addCartItem(cartId, productId, quantity) {
+      const response = await write(`/api/v1/carts/${encodeURIComponent(cartId)}/items`, {
+        product_id: productId, quantity,
+      });
+      return (await response.json()) as Cart;
+    },
   };
 }

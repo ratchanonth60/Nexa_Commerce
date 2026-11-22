@@ -27,3 +27,17 @@ export type CommerceApi = {
   getAvailability(productId: string, quantity: number): Promise<Availability | null>;
   getPriceQuote(productId: string, currency: string, channel: string): Promise<PriceQuote | null>;
 };
+
+export type Cart = {
+  id: string;
+  version: number;
+  items: { product_id: string; quantity: number }[];
+};
+
+export type CustomerApi = {
+  signedIn(): Promise<boolean>;
+  signIn(): Promise<void>;
+  signOut(): Promise<void>;
+  createCart(): Promise<Cart>;
+  addCartItem(cartId: string, productId: string, quantity: number): Promise<Cart>;
+};

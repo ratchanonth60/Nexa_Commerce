@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CommerceApi, PriceQuote, ProductDto } from '@nexa/contracts';
+import type { Cart, CommerceApi, CustomerApi, PriceQuote, ProductDto } from '@nexa/contracts';
 export function ProductList({ products, onSelect }: {
   products: ProductDto[];
   onSelect?: (productId: string) => void;
@@ -16,10 +16,43 @@ export function ProductList({ products, onSelect }: {
   </ul>;
 }
 
-export function Catalog({ api, title }: { api: CommerceApi; title: string }) {
+export function Catalog({ api, customerApi, title }: {
+  api: CommerceApi;
+  customerApi?: CustomerApi;
+  title: string;
+}) {
   const [products, setProducts] = useState<ProductDto[] | null>(null);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
+  const [cart, setCart] = useState<Cart | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [accountError, setAccountError] = useState('');
+
+  useEffect(() => {
+    let current = true;
+    customerApi?.signedIn().then(
+      (result) => { if (current) setSignedIn(result); },
+      () => { if (current) setAccountError('Could not check your session.'); },
+    );
+    return () => { current = false; };
+  }, [customerApi]);
+
+  async function accountAction(action: () => Promise<void>) {
+    setBusy(true);
+    setAccountError('');
+    try {
+      await action();
+    } catch (err) {
+      setAccountError(String(err));
+      if (customerApi && await customerApi.signedIn().catch(() => true) === false) {
+        setSignedIn(false);
+        setCart(null);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     let current = true;
@@ -32,9 +65,29 @@ export function Catalog({ api, title }: { api: CommerceApi; title: string }) {
 
   return <main style={{ fontFamily: 'system-ui', maxWidth: 700, margin: '48px auto', padding: 16 }}>
     <h1>{title}</h1>
+    {customerApi && <section aria-label="Account and cart">
+      <button type="button" disabled={busy} onClick={() => void accountAction(async () => {
+        if (signedIn) {
+          await customerApi.signOut();
+          setSignedIn(false);
+          setCart(null);
+        } else {
+          await customerApi.signIn();
+          setSignedIn(await customerApi.signedIn());
+        }
+      })}>{signedIn ? 'Sign out' : 'Sign in'}</button>
+      {signedIn && <p role="status">Cart items: {cart?.items.reduce((total, item) => total + item.quantity, 0) ?? 0}</p>}
+      {accountError && <p role="alert">{accountError}</p>}
+    </section>}
     {selectedId ? <>
       <button type="button" onClick={() => setSelectedId(null)}>Back to products</button>
       <ProductDetail key={selectedId} api={api} productId={selectedId} />
+      {customerApi && signedIn && <button type="button" disabled={busy}
+        onClick={() => void accountAction(async () => {
+          const currentCart = cart ?? await customerApi.createCart();
+          setCart(currentCart);
+          setCart(await customerApi.addCartItem(currentCart.id, selectedId, 1));
+        })}>Add to cart</button>}
     </> : <>
       {error && <p role="alert">Could not load products. {error}</p>}
       {!error && products === null && <p role="status">Loading products…</p>}
