@@ -22,23 +22,75 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U nexa -d catalog_db"
           --health-interval 5s --health-timeout 3s --health-retries 10
+      pricing-postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nexa
+          POSTGRES_PASSWORD: nexa_dev_only
+          POSTGRES_DB: pricing_db
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U nexa -d pricing_db"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      inventory-postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nexa
+          POSTGRES_PASSWORD: nexa_dev_only
+          POSTGRES_DB: inventory_db
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U nexa -d inventory_db"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      cart-postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nexa
+          POSTGRES_PASSWORD: nexa_dev_only
+          POSTGRES_DB: cart_db
+        ports:
+          - 5435:5432
+        options: >-
+          --health-cmd "pg_isready -U nexa -d cart_db"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     env:
+      CART_DATABASE_URL: postgres://nexa:nexa_dev_only@127.0.0.1:5435/cart_db
+      INVENTORY_DATABASE_URL: postgres://nexa:nexa_dev_only@127.0.0.1:5434/inventory_db
+      PRICING_DATABASE_URL: postgres://nexa:nexa_dev_only@127.0.0.1:5433/pricing_db
       DATABASE_URL: postgres://nexa:nexa_dev_only@127.0.0.1:5432/catalog_db
     steps:
       - uses: actions/checkout@v4
       - run: cargo fmt --check
       - run: cargo test --locked
       - run: cargo build --locked
-      - name: Check catalog against seeded PostgreSQL
+      - name: Check commerce API against seeded PostgreSQL
         run: |
+          cart_keys=$(mktemp -d)
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$cart_keys/key.pem" 2>/dev/null
+          openssl pkey -in "$cart_keys/key.pem" -pubout -out "$cart_keys/public.pem"
+          export OIDC_ISSUER=https://identity.example.test OIDC_API_AUDIENCE=nexa-api
+          export OIDC_PUBLIC_KEY_FILE="$cart_keys/public.pem"
           ./target/debug/catalog-service &
           catalog_pid=$!
-          trap 'kill "$catalog_pid" 2>/dev/null || true' EXIT
+          trap 'kill "$catalog_pid" 2>/dev/null || true; rm -rf "$cart_keys"' EXIT
           curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:8082/healthz
           curl --fail --silent --show-error http://127.0.0.1:8082/api/v1/catalog/products |
             jq -e 'map(.sku) == ["DEMO-MUG", "DEMO-TSHIRT"] and all(.[]; .status == "active" and (.id | type == "string") and (.title | type == "string"))'
           curl --fail --silent --show-error 'http://127.0.0.1:8082/api/v1/catalog/products?limit=1' |
             jq -e 'map(.sku) == ["DEMO-MUG"]'
+          quote_url='http://127.0.0.1:8082/api/v1/pricing/quotes?product_id=019b0000-0000-7000-8000-000000000002&channel=storefront'
+          curl --fail --silent --show-error "$quote_url&currency=THB" |
+            jq -e '.product_id == "019b0000-0000-7000-8000-000000000002" and .unit_amount_minor == "24900" and .currency == "THB" and .rule_version == 1 and (.quote_id | type == "string") and (.expires_at | fromdateiso8601 > now)'
+          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$quote_url&currency=USD")" = 404
+          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$quote_url&currency=thb")" = 400
+          stock_url='http://127.0.0.1:8082/api/v1/inventory/availability?product_id=019b0000-0000-7000-8000-000000000002'
+          curl --fail --silent --show-error "$stock_url&quantity=12" |
+            jq -e '. == {product_id: "019b0000-0000-7000-8000-000000000002", quantity: 12, available: true}'
+          curl --fail --silent --show-error "$stock_url&quantity=13" |
+            jq -e '.available == false'
+          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$stock_url&quantity=0")" = 400
           product_url=http://127.0.0.1:8082/api/v1/catalog/products/019b0000-0000-7000-8000-000000000002
           curl --fail --silent --show-error "$product_url" |
             jq -e '. == {id: "019b0000-0000-7000-8000-000000000002", sku: "DEMO-MUG", title: "Nexa Demo Mug", status: "active"}'
@@ -50,6 +102,7 @@ jobs:
           test "$status" = 404
           curl --fail --silent --show-error "${product_url%/*}" |
             jq -e 'map(.sku) == ["DEMO-TSHIRT"]'
+          python3 services/catalog-service/tests/cart_smoke.py "$cart_keys/key.pem"
 
   clients:
     runs-on: macos-latest
@@ -61,7 +114,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: project/package.json
-      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @nexa/storefront-web build
       - run: pnpm --filter @nexa/desktop build
-      - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml

@@ -82,3 +82,13 @@ README.md
 project/.gitignore
 project/Cargo.lock
 project/apps/desktop/src-tauri/icons/icon.png
+project/services/catalog-service/src/pricing.rs
+project/services/catalog-service/pricing-migrations/202611220001_init.sql
+project/pnpm-lock.yaml
+project/apps/desktop/src-tauri/Cargo.lock
+project/services/catalog-service/src/inventory.rs
+project/services/catalog-service/inventory-migrations/202611220001_init.sql
+project/services/catalog-service/src/auth.rs
+project/services/catalog-service/src/cart.rs
+project/services/catalog-service/cart-migrations/202611220001_init.sql
+project/services/catalog-service/tests/cart_smoke.py

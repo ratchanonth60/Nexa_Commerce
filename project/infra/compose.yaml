@@ -15,6 +15,54 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+  pricing-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexa
+      POSTGRES_PASSWORD: nexa_dev_only
+      POSTGRES_DB: pricing_db
+    ports:
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - nexa_pricing_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexa -d pricing_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  inventory-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexa
+      POSTGRES_PASSWORD: nexa_dev_only
+      POSTGRES_DB: inventory_db
+    ports:
+      - '127.0.0.1:5434:5432'
+    volumes:
+      - nexa_inventory_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexa -d inventory_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  cart-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexa
+      POSTGRES_PASSWORD: nexa_dev_only
+      POSTGRES_DB: cart_db
+    ports:
+      - '127.0.0.1:5435:5432'
+    volumes:
+      - nexa_cart_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexa -d cart_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   rabbitmq:
     image: rabbitmq:4-management-alpine
     ports:
@@ -26,3 +74,6 @@ services:
       - '127.0.0.1:6379:6379'
 volumes:
   nexa_catalog_pgdata:
+  nexa_pricing_pgdata:
+  nexa_inventory_pgdata:
+  nexa_cart_pgdata:

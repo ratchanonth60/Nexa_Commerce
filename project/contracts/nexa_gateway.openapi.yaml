@@ -45,9 +45,59 @@ paths:
           description: Product ID must be a UUID
         '404':
           description: No active product found with this ID
+  /api/v1/pricing/quotes:
+    get:
+      summary: Read a storefront price quote for display
+      operationId: getPriceQuote
+      security: []
+      parameters:
+        - {in: query, name: product_id, required: true, schema: {type: string, format: uuid}}
+        - {in: query, name: currency, required: true, schema: {type: string, pattern: '^[A-Z]{3}$'}}
+        - {in: query, name: channel, required: true, schema: {type: string, pattern: '^[a-z0-9-]{1,32}$'}}
+      responses:
+        '200':
+          description: Display quote valid for five minutes
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PriceQuote'}
+        '400': {description: Missing or invalid quote parameters}
+        '404': {description: No price configured for this product, currency and channel}
+  /api/v1/inventory/availability:
+    get:
+      summary: Check stock availability for a requested quantity
+      operationId: getAvailability
+      security: []
+      parameters:
+        - {in: query, name: product_id, required: true, schema: {type: string, format: uuid}}
+        - {in: query, name: quantity, required: true, schema: {type: integer, minimum: 1, maximum: 9999}}
+      responses:
+        '200':
+          description: Availability at the time of the read
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Availability'}
+        '400': {description: Missing or invalid availability parameters}
+        '404': {description: No stock record for this product}
+  /api/v1/carts:
+    post:
+      summary: Create a cart for the authenticated customer
+      operationId: createCart
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Empty cart with version zero
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Cart'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '503': {$ref: '#/components/responses/CartUnavailable'}
   /api/v1/carts/{cartId}:
     get:
       summary: Read owned cart
+      operationId: readCart
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/CartId'
       responses:
@@ -56,10 +106,16 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Cart'}
+        '400': {description: Cart ID must be a UUID}
+        '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '503': {$ref: '#/components/responses/CartUnavailable'}
   /api/v1/carts/{cartId}/items:
     post:
       summary: Add item to owned cart
+      operationId: addCartItem
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/CartId'
       requestBody:
@@ -73,7 +129,12 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Cart'}
+        '400': {description: Invalid cart ID or item payload}
+        '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Active product not found}
+        '409': {description: Total quantity for the product would exceed 9999}
+        '503': {$ref: '#/components/responses/CartUnavailable'}
   /api/v1/checkouts:
     post:
       summary: Create checkout Saga with idempotency
@@ -136,6 +197,12 @@ components:
   responses:
     NotFound: {description: Resource not found}
     Forbidden: {description: Not authorized for this resource}
+    Unauthorized:
+      description: Missing or invalid JWT access token
+      headers:
+        WWW-Authenticate:
+          schema: {type: string, example: Bearer}
+    CartUnavailable: {description: Access token validation has not been configured}
   schemas:
     Product:
       type: object
@@ -145,6 +212,23 @@ components:
         sku: {type: string}
         title: {type: string}
         status: {type: string, enum: [draft, active, archived]}
+    PriceQuote:
+      type: object
+      required: [quote_id, product_id, currency, unit_amount_minor, expires_at, rule_version]
+      properties:
+        quote_id: {type: string, format: uuid}
+        product_id: {type: string, format: uuid}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        unit_amount_minor: {type: string, pattern: '^[0-9]+$'}
+        expires_at: {type: string, format: date-time}
+        rule_version: {type: integer, minimum: 1}
+    Availability:
+      type: object
+      required: [product_id, quantity, available]
+      properties:
+        product_id: {type: string, format: uuid}
+        quantity: {type: integer, minimum: 1, maximum: 9999}
+        available: {type: boolean}
     Cart:
       type: object
       required: [id, items, version]

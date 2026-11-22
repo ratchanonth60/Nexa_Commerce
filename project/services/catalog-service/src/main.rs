@@ -1,4 +1,9 @@
-// DEMO-ONLY public catalog read. No authentication, rate limiting or production telemetry.
+// Development gateway for Catalog, Pricing, Inventory and Cart.
+mod auth;
+mod cart;
+mod inventory;
+mod pricing;
+
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderValue, Method, StatusCode},
@@ -13,6 +18,10 @@ use tracing::{error, info};
 #[derive(Clone)]
 struct AppState {
     db: PgPool,
+    pricing_db: PgPool,
+    inventory_db: PgPool,
+    cart_db: PgPool,
+    access_tokens: Option<auth::AccessTokens>,
 }
 
 #[derive(Serialize, FromRow)]
@@ -71,7 +80,7 @@ fn catalog_query_error(err: sqlx::Error) -> StatusCode {
     StatusCode::INTERNAL_SERVER_ERROR
 }
 
-fn catalog_app(db: PgPool) -> Router {
+fn commerce_app(state: AppState) -> Router {
     // Allow only our local development web UI. Do not use wildcard origins in production.
     let allowed_origins = [
         HeaderValue::from_static("http://localhost:5173"),
@@ -81,13 +90,24 @@ fn catalog_app(db: PgPool) -> Router {
         .route("/healthz", get(health))
         .route("/api/v1/catalog/products", get(list_products))
         .route("/api/v1/catalog/products/{productId}", get(get_product))
+        .route("/api/v1/pricing/quotes", get(pricing::get_quote))
+        .route(
+            "/api/v1/inventory/availability",
+            get(inventory::get_availability),
+        )
+        .route("/api/v1/carts", axum::routing::post(cart::create_cart))
+        .route("/api/v1/carts/{cartId}", get(cart::read_cart))
+        .route(
+            "/api/v1/carts/{cartId}/items",
+            axum::routing::post(cart::add_item),
+        )
         .layer(
             CorsLayer::new()
                 .allow_origin(allowed_origins)
                 .allow_methods([Method::GET]),
         )
         .layer(TraceLayer::new_for_http())
-        .with_state(AppState { db })
+        .with_state(state)
 }
 
 #[tokio::main]
@@ -102,7 +122,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = PgPool::connect(&database_url).await?;
     sqlx::migrate!().run(&db).await?;
 
-    let app = catalog_app(db);
+    let pricing_db = PgPool::connect(&std::env::var("PRICING_DATABASE_URL")?).await?;
+    sqlx::migrate!("./pricing-migrations")
+        .run(&pricing_db)
+        .await?;
+
+    let inventory_db = PgPool::connect(&std::env::var("INVENTORY_DATABASE_URL")?).await?;
+    sqlx::migrate!("./inventory-migrations")
+        .run(&inventory_db)
+        .await?;
+
+    let cart_db = PgPool::connect(&std::env::var("CART_DATABASE_URL")?).await?;
+    sqlx::migrate!("./cart-migrations").run(&cart_db).await?;
+    let access_tokens = auth::AccessTokens::from_env()?;
+
+    let app = commerce_app(AppState {
+        db,
+        pricing_db,
+        inventory_db,
+        cart_db,
+        access_tokens,
+    });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8082").await?;
     info!("catalog service listening on 127.0.0.1:8082");
     axum::serve(listener, app).await?;
@@ -118,10 +158,20 @@ mod tests {
     };
     use tower::ServiceExt;
 
+    fn test_app() -> Router {
+        let db = PgPool::connect_lazy("postgres://localhost/catalog_db").unwrap();
+        commerce_app(AppState {
+            db: db.clone(),
+            pricing_db: db.clone(),
+            inventory_db: db.clone(),
+            cart_db: db,
+            access_tokens: None,
+        })
+    }
+
     #[tokio::test]
     async fn rejects_invalid_product_ids() {
-        let db = PgPool::connect_lazy("postgres://localhost/catalog_db").unwrap();
-        let response = catalog_app(db)
+        let response = test_app()
             .oneshot(
                 Request::builder()
                     .uri("/api/v1/catalog/products/not-a-uuid")
@@ -135,8 +185,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_invalid_limits_and_allows_the_local_storefront() {
-        let db = PgPool::connect_lazy("postgres://localhost/catalog_db").unwrap();
-        let app = catalog_app(db);
+        let app = test_app();
 
         for (query, origin) in [
             ("0", "http://localhost:5173"),

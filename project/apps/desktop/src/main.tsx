@@ -7,6 +7,8 @@ import { Catalog } from '@nexa/ui';
 const api: CommerceApi = {
   listProducts: () => invoke('list_products'),
   getProduct: (productId) => invoke('get_product', { productId }),
+  getAvailability: (productId, quantity) => invoke('get_availability', { productId, quantity }),
+  getPriceQuote: (productId, currency, channel) => invoke('get_price_quote', { productId, currency, channel }),
 };
 
 createRoot(document.getElementById('root')!).render(

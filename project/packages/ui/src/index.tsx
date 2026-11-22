@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CommerceApi, ProductDto } from '@nexa/contracts';
+import type { CommerceApi, PriceQuote, ProductDto } from '@nexa/contracts';
 export function ProductList({ products, onSelect }: {
   products: ProductDto[];
   onSelect?: (productId: string) => void;
@@ -68,5 +68,47 @@ function ProductDetail({ api, productId }: { api: CommerceApi; productId: string
       <dt>Status</dt>
       <dd>{product.status}</dd>
     </dl>
+    <ProductPrice api={api} productId={product.id} />
+    <ProductAvailability api={api} productId={product.id} />
   </section>;
+}
+
+function ProductPrice({ api, productId }: { api: CommerceApi; productId: string }) {
+  const [quote, setQuote] = useState<PriceQuote | null | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let current = true;
+    api.getPriceQuote(productId, 'THB', 'storefront').then(
+      (result) => { if (current) setQuote(result); },
+      () => { if (current) setFailed(true); },
+    );
+    return () => { current = false; };
+  }, [api, productId]);
+
+  if (failed) return <p role="alert">Could not load the price.</p>;
+  if (quote === undefined) return <p role="status">Loading price…</p>;
+  if (quote === null) return <p role="status">Price unavailable.</p>;
+
+  const amount = quote.unit_amount_minor.padStart(3, '0');
+  return <p>{quote.currency} {amount.slice(0, -2)}.{amount.slice(-2)}</p>;
+}
+
+function ProductAvailability({ api, productId }: { api: CommerceApi; productId: string }) {
+  const [available, setAvailable] = useState<boolean | null | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let current = true;
+    api.getAvailability(productId, 1).then(
+      (result) => { if (current) setAvailable(result?.available ?? null); },
+      () => { if (current) setFailed(true); },
+    );
+    return () => { current = false; };
+  }, [api, productId]);
+
+  if (failed) return <p role="alert">Could not check stock.</p>;
+  if (available === undefined) return <p role="status">Checking stock…</p>;
+  if (available === null) return <p role="status">Stock information unavailable.</p>;
+  return <p>{available ? 'In stock' : 'Out of stock'}</p>;
 }
