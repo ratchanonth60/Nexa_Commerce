@@ -18,6 +18,11 @@ pub(crate) struct CheckoutDatabases {
 }
 
 impl CheckoutDatabases {
+    pub(crate) async fn ping(&self) -> Result<(), sqlx::Error> {
+        tokio::try_join!(crate::ping(&self.order), crate::ping(&self.payment))?;
+        Ok(())
+    }
+
     pub(crate) fn order_pool(&self) -> &PgPool {
         &self.order
     }

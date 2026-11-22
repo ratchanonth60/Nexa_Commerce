@@ -138,6 +138,10 @@ jobs:
           docker exec "${{ job.services.order-postgres.id }}" psql -v ON_ERROR_STOP=1 -U nexa -d order_db -At \
             -c "SELECT count(*) FROM order_outbox WHERE event_type = 'order.confirmed.v1'" | grep -x 1
           python3 services/catalog-service/tests/operations_smoke.py "$cart_keys/key.pem"
+          curl --fail --silent --show-error http://127.0.0.1:8082/readyz
+          python3 infra/observability/load-smoke.py --seconds 3 --workers 4
+          curl --fail --silent --show-error http://127.0.0.1:8082/metrics |
+            awk '/^nexa_http_requests_total\{/ && /route="\/api\/v1\/search\/products"/ { found = 1 } END { exit !found }'
           docker exec "${{ job.services.postgres.id }}" psql -v ON_ERROR_STOP=1 -U nexa -d catalog_db \
             -c "UPDATE product SET status = 'archived' WHERE sku = 'DEMO-MUG'"
           status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$product_url")

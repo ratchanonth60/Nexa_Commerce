@@ -4,6 +4,7 @@ mod cart;
 mod checkout;
 mod fulfillment;
 mod inventory;
+mod metrics;
 mod operations;
 mod payment;
 mod pricing;
@@ -15,7 +16,7 @@ use axum::{
     http::{HeaderValue, Method, StatusCode},
     middleware,
     routing::{get, post},
-    Json, Router,
+    Extension, Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{types::Uuid, FromRow, PgPool};
@@ -49,6 +50,33 @@ struct ProductQuery {
 
 async fn health() -> &'static str {
     "ok"
+}
+
+async fn readiness(State(state): State<AppState>) -> Result<&'static str, StatusCode> {
+    let check = async {
+        let core = tokio::try_join!(
+            ping(&state.db),
+            ping(&state.pricing_db),
+            ping(&state.inventory_db),
+            ping(&state.cart_db),
+        );
+        core?;
+        if let Some(checkout) = &state.checkout {
+            checkout.ping().await?;
+        }
+        if let Some(fulfillment) = &state.fulfillment {
+            ping(fulfillment).await?;
+        }
+        Ok::<_, sqlx::Error>(())
+    };
+    match tokio::time::timeout(std::time::Duration::from_secs(1), check).await {
+        Ok(Ok(())) => Ok("ready"),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+async fn ping(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query("SELECT 1").execute(pool).await.map(|_| ())
 }
 
 async fn list_products(
@@ -98,6 +126,8 @@ fn commerce_app(state: AppState) -> Router {
     ];
     Router::new()
         .route("/healthz", get(health))
+        .route("/readyz", get(readiness))
+        .route("/metrics", get(metrics::scrape))
         .route("/api/v1/catalog/products", get(list_products))
         .route("/api/v1/catalog/products/{productId}", get(get_product))
         .route("/api/v1/search/products", get(search::search_products))
@@ -146,6 +176,8 @@ fn commerce_app(state: AppState) -> Router {
                 tracing::debug_span!("request", method = %request.method(), path = %request.uri().path())
             },
         ))
+        .layer(middleware::from_fn(metrics::record))
+        .layer(Extension(metrics::Metrics::default()))
         .with_state(state)
 }
 
@@ -247,6 +279,30 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn metrics_use_route_templates_instead_of_raw_requests() {
+        let app = test_app();
+        let product = Request::builder()
+            .uri("/api/v1/catalog/products/private-input?secret=value")
+            .body(Body::empty())
+            .unwrap();
+        app.clone().oneshot(product).await.unwrap();
+        let scrape = Request::builder()
+            .uri("/metrics")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(scrape).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), 32_000)
+            .await
+            .unwrap();
+        let body = std::str::from_utf8(&body).unwrap();
+        assert!(body.contains(
+            "route=\"/api/v1/catalog/products/{productId}\",method=\"GET\",status=\"400\"} 1"
+        ));
+        assert!(!body.contains("private-input"));
+        assert!(!body.contains("secret=value"));
     }
 
     #[tokio::test]

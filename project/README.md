@@ -178,3 +178,12 @@ retries incomplete dispatches across gateway restarts. Notification history is
 served from Fulfillment. Product search is backed by an active-only Catalog
 GIN index. Inventory adjustments record the operator and previous and new
 values in Inventory.
+
+## Release checks
+
+- Run the GitHub Actions commerce tests against PostgreSQL and build both clients. Exercise buyer sign-in, checkout, payment decline, operator stock adjustment, dispatch, and shipment visibility in staging.
+- Keep `/metrics` and `/readyz` on the internal gateway listener. `/healthz` checks liveness and `/readyz` checks all configured databases. Verify the Prometheus scrape and connect alerts to the on-call destination.
+- Start Prometheus with `prometheus --config.file=infra/observability/prometheus.yml`. The initial targets are 99.9% API availability and 95% of requests within 500 ms over a rolling 30-minute window. The alert rules exclude 4xx responses and require at least 100 requests for either ratio alert.
+- Run `python3 infra/observability/load-smoke.py` against the local gateway. Record concurrency, request count, p95 latency, and errors. Use staging traffic and production SLOs to set release capacity thresholds.
+- After placing and dispatching a sandbox order in the Compose stack, run `bash infra/backup-drill.sh`. The drill restores all seven databases into an isolated PostgreSQL container and compares counts plus order and fulfillment records. Production recovery also needs coordinated recovery points across databases and Identity Provider backups.
+- Configure the production identity provider and key rotation. Use HTTPS for the storefront and keep sandbox credentials and payment tokens in local development. Verify the payment provider, webhook handling, shipping addresses and policies in staging before charging customers.

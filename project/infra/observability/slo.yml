@@ -1,0 +1,22 @@
+groups:
+  - name: nexa-gateway-slo
+    rules:
+      - record: nexa:api_requests:increase30m
+        expr: sum(increase(nexa_http_requests_total{route=~"/api/v1/.*",status!~"4.."}[30m]))
+      - record: nexa:api_availability:ratio30m
+        expr: >
+          1 - (sum(increase(nexa_http_requests_total{route=~"/api/v1/.*",status=~"5.."}[30m])) or vector(0))
+          / clamp_min(nexa:api_requests:increase30m, 1)
+      - record: nexa:api_latency_within_500ms:ratio30m
+        expr: >
+          sum(increase(nexa_http_request_duration_seconds_bucket{route=~"/api/v1/.*",status!~"4..",le="0.5"}[30m]))
+          / clamp_min(nexa:api_requests:increase30m, 1)
+      - alert: NexaGatewayUnavailable
+        expr: up{job="nexa-gateway"} == 0
+        for: 1m
+      - alert: NexaGatewayAvailabilityBelowTarget
+        expr: nexa:api_availability:ratio30m < 0.999 and nexa:api_requests:increase30m >= 100
+        for: 5m
+      - alert: NexaGatewayLatencyAboveTarget
+        expr: nexa:api_latency_within_500ms:ratio30m < 0.95 and nexa:api_requests:increase30m >= 100
+        for: 5m
